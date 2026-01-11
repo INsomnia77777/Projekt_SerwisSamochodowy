@@ -1,0 +1,30 @@
+1	Wymiana oleju i filtra oleju	150	10
+2	Wymiana filtra powietrza	50	3
+3	Wymiana filtra kabinowego	80	5
+4	Wymiana świec zapłonowych (kpl)	120	8
+5	Serwis klimatyzacji (nabicie)	250	15
+6	Odgrzybianie klimatyzacji	100	10
+7	Wymiana klocków hamulcowych (przód)	200	12
+8	Wymiana tarcz i klocków (przód)	450	20
+9	Wymiana płynu hamulcowego	150	10
+10	Wymiana płynu chłodniczego	120	8
+11	Diagnostyka komputerowa silnika	100	5
+12	Wymiana akumulatora	40	3
+13	Wymiana rozrządu	800	40
+14	Wymiana sprzęgła	1200	60
+15	Naprawa zawieszenia (wahacz)	300	15
+16	Wymiana amortyzatorów (para)	400	25
+17	Ustawienie zbieżności/geometrii	180	15
+18	Wymiana opon (kpl)	160	20
+19	Naprawa układu wydechowego (spawanie)	150	15
+20	Wymiana żarówek reflektorów	30	2
+21	Naprawa alternatora	350	25
+22	Naprawa rozrusznika	300	20
+23	Wymiana uszczelki pod głowicą	1500	80
+24	Czyszczenie zaworu EGR	200	15
+25	Wymiana pompy paliwa	400	25
+26	Naprawa przekładni kierowniczej	900	50
+27	Wymiana przegubów napędowych	250	18
+28	Przegląd okresowy (rozszerzony)	300	30
+29	Wymiana płynu wspomagania	100	7
+30	Naprawa hamulca ręcznego	200	15
