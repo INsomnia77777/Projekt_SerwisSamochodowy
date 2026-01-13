@@ -7,38 +7,59 @@
 #include <sys/shm.h>
 #include <sys/sem.h>
 #include <unistd.h>
-#include <iostream>
-#include <errno.h>
+#include <pthread.h>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <cstring>
-#include <semaphore.h>
+#include <csignal>
+#include <ctime>
+#include <cerrno>
+#include <iostream>
+#include <vector>
 
-//Klucze (ftok) - trzeba to bêdzie zaktualizowaæ
-#define PROJECT_KEY 0xB12345
-#define MSG_QUEUE_KEY 0xA67890
+#define PLIK_KLUCZA "."   // Œcie¿ka do generowania klucza
+#define ID_PROJEKTU 'S'   // Znak projektu (Serwis)
 
-// Sta³e serwisu
-const int MAX_MECHANIKOW = 8;
-const int MAX_USLUG = 30;
+// --- LIMITY I STA£E ---
+#define T1 60             // Decyzja dla klienta o czekaniu kiedy serwis nieczynny
+#define LICZBA_SEM 5
+#define MAX_USLUG 30
+#define MAX_USTER_W_AUCIE 5
+
 const int K1 = 3;
 const int K2 = 5;
 
-// Sta³e czas
 const int T_POCZATEK = 0;
 const int T_KONIEC = 24;
-const int SERWIS_OTWARCIE = 10;
+const int SERWIS_OTWARCIE = 8;
 const int SERWIS_ZAMKNIECIE = 18;
 const int JEDNOSTKA_CZASU_MS = 60000; // 60000 ms = 60 sekund czasu rzeczywistego, 1 min real= 1h symulacja
 
 // RAPORT SYMULACJI
-const std::string PLIK_RAPORTU = "raport_symulacji.txt";
+#define PLIK_RAPORTU "raport_symulacji.txt"
 
-// Struktura us³ugi
-//Trzeba okreœliæ jeszcze 3 kryrtyczne usterki
+// INDEKSY SEMAFORÓW
+enum SemIndex {
+    SEM_PRACOWNICY = 0,         // Kolejka klientów (zmienna wartoœæ 1-3)
+    SEM_ALARM = 1,              // Kolejka klientów - drugi semafor
+    SEM_WARSZTAT_OGOLNY = 2,    // Stanowiska mech 1-7 (wartoœæ pocz. 7)
+    SEM_WARSZTAT_SPECJALNY = 3, // Stanowisko mech 8 (wartoœæ pocz. 1 - tylko U i Y)
+    SEM_KASA = 4                // Kolejka do kasy (wartoœæ pocz. 1)
+};
+
+// PRIORYTETY WIADOMOŒCI
+enum TypKomunikatu {
+    MSG_OD_KASJERA = 1,      // Najwy¿szy: od kasjera
+    MSG_OD_MECHANIKA = 2,    // Wysoki: od mechanika
+    MSG_NOWY_KLIENT = 3      // Standard: od klienta
+};
+
+// USTERKI
+inline bool czy_krytyczna(int id_uslugi) {
+    // Kody usterek krytycznych: 4, 16, 21
+    return (id_uslugi == 4 || id_uslugi == 16 || id_uslugi == 21);
+}
+
+// US£UGI
 struct Usluga {
     int id;
     char nazwa[64];
@@ -46,28 +67,34 @@ struct Usluga {
     int czas_bazowy;
 };
 
-// STRUKTURA PAMIÊCI DZIELONEJ
-struct StanSerwisu {
-    Usluga cennik[MAX_USLUG];
-    sem_t sem_dostepne_stanowiska_obslugi;
-    int liczba_klientow_w_kolejce;
-    int otwarte_okienka_obslugi;
-    bool stanowisko_mechanika_zajete[MAX_MECHANIKOW];
-    bool czy_pozar;                     // Sygna³ 4
-    int aktualna_godzina;
-    int aktualna_minuta;
+// 1. Pamiêæ Dzielona: ZEGAR
+struct StanZegara {
+    int dzien;
+    int godzina;
+    int minuta;
+    bool czy_otwarte;
+    //trzeba bedzie dodac liczby otwartych stanowisk ale to po semaforach
 };
 
-// STRUKTURA KOLEJKI KOMUNIKATÓW
+// 2. Kolejka komunikatów
 struct Wiadomosc {
-    long mtype;             // 1: Klient->Pracownik, 2: Pracownik->Mechanik, itd.
-    pid_t nadawca_pid;      // PID procesu wysy³aj¹cego
-    char marka_auta;        // A, E, I, O, U, Y lub inne
-    int id_uslugi;          // Wybrana us³uga z cennika
-    bool czy_zaakceptowano; // Do obs³ugi 2% odrzuceñ i 20% dodatkowych usterek
-    int cena;
-    int czas;
+    long mtype;
+    pid_t nadawca_pid;
+    int id_klienta;
+    char marka_auta;
+    int id_uslugi[MAX_USTER_W_AUCIE];
+    int liczba_usterek;
+    bool czy_zaakceptowano;
+    bool czy_gotowe; //koniec naprawy
+    int cena_total;
 };
+
+//Klucze (ftok) - trzeba to bêdzie zaktualizowaæ
+#define SHM_KEY 0xB12345
+#define MSG_KEY 0xA67890
+#define SEM_KEY 0xC12345
+
+//Funkcje pomocnicze
 
 //SEMAFORY
 //OPUSZCZENIE
@@ -133,12 +160,6 @@ inline void wczytaj_uslugi(Usluga* tablica) {
     }
     plik.close();
     std::cout << "Wczytano " << i << " uslug do pamieci dzielonej." << std::endl;
-}
-
-inline void blad(int wynik, const char* komunikat) {
-    if (wynik == -1) {
-        perror(komunikat);
-    }
 }
 
 #endif
