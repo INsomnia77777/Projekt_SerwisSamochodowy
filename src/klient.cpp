@@ -1,117 +1,196 @@
 #include "common.h"
+#include <iostream>
+#include <string>
+#include <vector>
+#include <unistd.h>
 #include <ctime>
 
-bool wylosuj_szanse(int procent) {
-    if (procent <= 0) return false;
-    if (procent >= 100) return true;
-    return (rand() % 100) < procent;
+// ZMIENNE GLOBALNE
+int semid;
+int msgid;
+int shmid_zegar;
+int shmid_uslugi;
+std::string identyfikator;
+
+StanZegara* zegar;
+Usluga* cennik;
+
+// FUNKCJE POMOCNICZE
+
+void podlacz_zasoby() {
+    semid = semget(SEM_KEY, 0, 0600);
+    if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
+
+    msgid = msgget(MSG_KEY, 0600);
+    if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
+
+    shmid_zegar = shmget(SHM_KEY, 0, 0600);
+    if (shmid_zegar == -1) { perror("KLIENT: Blad shmget Zegar"); exit(1); }
+    zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
+
+    shmid_uslugi = shmget(SHM_KEY + 1, 0, 0600);
+    if (shmid_uslugi == -1) { perror("KLIENT: Blad shmget Uslugi"); exit(1); }
+    cennik = (Usluga*)shmat(shmid_uslugi, NULL, 0);
+}
+
+// Funkcja generuj¹ca usterki (z wa¿onym losowaniem marek)
+void generuj_usterki(Wiadomosc* msg) {
+    msg->mtype = MSG_NOWY_KLIENT;
+    msg->nadawca_pid = getpid();
+    msg->id_klienta = getpid();
+    msg->czy_zaakceptowano = false;
+    msg->czy_gotowe = false;
+    msg->cena_total = 0;
+
+    std::vector<char> pula_marek;
+
+    for (char c = 'A'; c <= 'Z'; c++) {
+        pula_marek.push_back(c);
+    }
+
+    // Wrzucamy marki obs³ugiwane (Specjalne) dodatkowo 5 razy
+    char obslugiwane[] = { 'A', 'E', 'I', 'O', 'U', 'Y' };
+    for (char m : obslugiwane) {
+        for (int k = 0; k < 5; k++) {
+            pula_marek.push_back(m);
+        }
+    }
+    msg->marka_auta = pula_marek[rand() % pula_marek.size()];
+
+    // LOSOWANIE USTEREK
+    int dostepne_uslugi_count = 0;
+    while (dostepne_uslugi_count < MAX_USLUG && cennik[dostepne_uslugi_count].id != 0) {
+        dostepne_uslugi_count++;
+    }
+
+    if (dostepne_uslugi_count == 0) { msg->liczba_usterek = 0; return; }
+
+    msg->liczba_usterek = (rand() % 3) + 1; // 1 -3 usterek
+
+    for (int i = 0; i < msg->liczba_usterek; i++) {
+        int index = rand() % dostepne_uslugi_count;
+        msg->id_uslugi[i] = cennik[index].id;
+    }
+}
+
+// Sprawdzenie czy usterka jest krytyczna
+bool mam_usterke_krytyczna(Wiadomosc* msg) {
+    for (int i = 0; i < msg->liczba_usterek; i++) {
+        if (czy_krytyczna(msg->id_uslugi[i])) return true;
+    }
+    return false;
+}
+
+bool czekaj_na_otwarcie(Wiadomosc* msg) {
+    if (zegar->czy_otwarte) return true;
+
+    int minuty_teraz = zegar->godzina * 60 + zegar->minuta;
+    int minuty_otwarcie = SERWIS_OTWARCIE * 60;
+    int diff;
+
+    if (minuty_teraz > minuty_otwarcie) diff = (1440 - minuty_teraz) + minuty_otwarcie;
+    else diff = minuty_otwarcie - minuty_teraz;
+
+    bool krytyczna = mam_usterke_krytyczna(msg);
+    bool zostaje = false;
+
+    if (krytyczna) {
+        log(identyfikator, "Serwis zamkniety (KRYTYCZNA). Czekam na otwarcie bramy (blokada).");
+        zostaje = true;
+    }
+    else if (diff <= T1) {
+        log(identyfikator, "Serwis zamkniety (otwarcie za " + std::to_string(diff) + " min). Czekam (blokada).");
+        zostaje = true;
+    }
+    else {
+        log(identyfikator, "Serwis zamkniety. Czas oczekiwania " + std::to_string(diff) + " min to za dlugo. Odjezdzam.");
+        zostaje = false;
+    }
+
+    if (zostaje) {
+        P(semid, SEM_ALARM);
+
+        log(identyfikator, "Otwarto serwis. Wchodze");
+        return true;
+    }
+
+    return false;
 }
 
 int main() {
+    srand(getpid() + time(NULL));
+    identyfikator = "KLIENT " + std::to_string(getpid());
+    podlacz_zasoby();
 
-    // Segmenty pamiêci dzielonej (shmget, shmat)
-    int shmid = shmget(PROJECT_KEY, sizeof(StanSerwisu), 0600);
-    if (shmid == -1) {
-        perror("Klient: shmget failed");
-        exit(EXIT_FAILURE);
-    }
-
-    StanSerwisu* stan = (StanSerwisu*)shmat(shmid, NULL, 0);
-    if (stan == (void*)-1) {
-        perror("Klient: shmat failed");
-        exit(EXIT_FAILURE);
-    }
-
-    //Kolejka komunikatów (msgget)
-    int msgid = msgget(MSG_QUEUE_KEY, 0600);
-    if (msgid == -1) {
-        perror("Klient: msgget failed");
-        exit(EXIT_FAILURE);
-    }
-
-    //Semafory
-    int semid = semget(PROJECT_KEY, 0, 0600);
-    if (semid == -1) { perror("Klient: semget failed"); return 1; }
-
-
-    pid_t mpid = getpid();
-
-    srand(time(NULL) ^ (mpid << 16)); // Unikalne ziarno losowania
-
-    //Losowanie marki z zakresu A-Z
-    //Na razie losujemy tylko z obs³ugiwanych
-    int losowy_indeks = rand() % 6;
-    char dostepne_marki[] = { 'A', 'E', 'I', 'O', 'U', 'Y' };
-    char moja_marka = dostepne_marki[losowy_indeks]; //'A' + (rand() % 26);
-    //Wybór us³ugi z cennika
-    int moje_id_uslugi = 1 + (rand() % MAX_USLUG);
-    stan->liczba_klientow_w_kolejce++;
-
-    char bufor_czasu[10];
-    sprintf(bufor_czasu, "%02d:%02d", stan->aktualna_godzina, stan->aktualna_minuta);
-    loguj("Klient " + std::to_string(mpid), "Przyjechalem o godzinie: " + std::string(bufor_czasu) + ", czekam na wolne stanowisko.");
-
-    P(semid, 0);
-
-    loguj("KLIENT" + std::to_string(mpid), "Podszedlem do stanowiska nr. "); //tu w przyszlosci mozeee bedzie nr stanowiska 
-    
-    //Wys³anie zlecenia do Pracownika Serwisu
     Wiadomosc msg;
-    msg.mtype = 1; // 1: Klient -> Pracownik
-    msg.nadawca_pid = mpid;
-    msg.marka_auta = moja_marka;
-    msg.id_uslugi = moje_id_uslugi;
-    msg.czy_zaakceptowano = false;
+    generuj_usterki(&msg);
 
-    if (msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0) == -1) {
-        perror("Klient: msgsnd failed");
-        V(semid, 0);
-        shmdt(stan);
-        return 1;
+    log(identyfikator, "Chce oddac auto marki " + std::string(1, msg.marka_auta));
+
+    if (!czekaj_na_otwarcie(&msg)) {
+        return 0;
     }
 
-    pid_t pid_pracownika = msg.nadawca_pid;
+    P(semid, SEM_PRACOWNICY);
 
-    // 1. Oczekiwanie na decyzjê o przyjêciu
-    if (msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), mpid, 0) == -1) {
-        perror("Klient: msgrcv (decyzja) failed");
-        V(semid, 0);
-        return 1;
+    log(identyfikator, "Wchodze do biura.");
+
+    msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+
+    if (msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0) == -1) {
+        perror("KLIENT: Blad msgrcv (negocjacje)");
+        V(semid, SEM_PRACOWNICY); return 1;
     }
-    if (!msg.czy_zaakceptowano) {
-        loguj("KLIENT " + std::to_string(mpid), "Marka nieobslugiwana. Odjezdzam.");
+
+    int szansa = rand() % 100;
+    if (szansa < 2) {
+        log(identyfikator, "Rezygnuje.");
+        msg.czy_zaakceptowano = false;
+        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        V(semid, SEM_PRACOWNICY);
+        return 0;
     }
-    else {
-        // 2% szans, ¿e klientowi nie pasuje
-        if (wylosuj_szanse(2)) {
-            loguj("KLIENT " + std::to_string(mpid), " Rezygnuje z us³ugi.");
-            msg.czy_zaakceptowano = false;
+
+    log(identyfikator, "Zlecam naprawe.");
+    msg.czy_zaakceptowano = true;
+    msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+
+    while (true) {
+        msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0);
+
+        if (msg.czy_gotowe) {
+            break;
         }
         else {
-            loguj("KLIENT " + std::to_string(mpid),  "Akceptuje warunki umowy. Zlecam naprawe.");
-            msg.czy_zaakceptowano = true;
-        }
-
-        msg.mtype = mpid;
-        msg.nadawca_pid = mpid;
-
-        if (msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0) == -1) {
-            perror("Klient: msgsnd decision failed");
+            int decyzja = rand() % 100;
+            if (decyzja < 20) {
+                log(identyfikator, "Nie zgadzam sie na dodatkowa naprawe.");
+                msg.czy_zaakceptowano = false;
+            }
+            else {
+                log(identyfikator, "Zgadzam sie na dodatkowe koszty.");
+                msg.czy_zaakceptowano = true;
+            }
+            msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         }
     }
 
-    // 2. Oczekiwanie na informacje o zakoñczeniu lub usterkach (uproszczone na ten moment)
-    // W pe³nej wersji tutaj bêdzie kolejna pêtla lub msgrcv czekaj¹ce na sygna³ od Pracownika o odbiorze.
-    
-    //if (msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), mpid, 0) == -1) {
-    //    perror("Klient: msgrcv (odbior) failed");
-    //}
-    //else {
-    //    std::cout << "Klient [" << mpid << "]: Odebralem auto. Place i odjezdzam!" << std::endl;
-    //}
+    log(identyfikator, "Auto gotowe! Ide do kasy. Kwota: " + std::to_string(msg.cena_total));
 
-    loguj("KLIENT " + std::to_string(mpid), "Wychodze z serwisu.");
+    V(semid, SEM_PRACOWNICY);
+    P(semid, SEM_KASA);
 
-    shmdt(stan);
+    msg.mtype = MSG_OD_KASJERA;
+    msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+
+    log(identyfikator, "Zaplacilem. Czekam na kluczyki.");
+
+    msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0);
+
+    log(identyfikator, "Mam kluczyki. Do widzenia!");
+    V(semid, SEM_KASA);
+    shmdt(zegar);
+    shmdt(cennik);
+
     return 0;
 }

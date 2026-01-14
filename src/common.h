@@ -14,11 +14,15 @@
 #include <ctime>
 #include <cerrno>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <cstring>
+#include <string>
 
 #define PLIK_KLUCZA "."
 #define ID_PROJEKTU 'S'
 
-// --- LIMITY I STA£E ---
+// LIMITY I STA£E
 #define T1 60             // Decyzja dla klienta o czekaniu kiedy serwis nieczynny
 #define LICZBA_SEM 5
 #define MAX_USLUG 30
@@ -49,7 +53,8 @@ enum SemIndex {
 enum TypKomunikatu {
     MSG_OD_KASJERA = 1,      // Najwyzszy: od kasjera
     MSG_OD_MECHANIKA = 2,    // Wysoki: od mechanika
-    MSG_NOWY_KLIENT = 3      // Standard: od klienta
+    MSG_NOWY_KLIENT = 3,      // Standard: od klienta
+    MSG_PLATNOSC = 4        //Typ dla kasjera
 };
 
 // USTERKI
@@ -85,6 +90,7 @@ struct Wiadomosc {
     bool czy_zaakceptowano;
     bool czy_gotowe; //koniec naprawy, oddanie kluczy
     int cena_total;
+    int czas_total;
 };
 
 //Klucze (ftok) - trzeba to bedzie zaktualizowac

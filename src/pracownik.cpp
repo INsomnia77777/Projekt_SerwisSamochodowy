@@ -1,145 +1,176 @@
-//Klient -> sprawdzenie marki klienta, okreœlenie prztbli¿onego czasu naprawy i przewidywany koszt
-//Mechanik -> (dodatkowe prace serwisowe) Pracownik -> Klient
-//Mechanik -> (formularz zakoñczenia prac serwisowych), ustala kwotê -> Klient
-//Kasjer -> (op³ata od klienta) oddanie kluczyków -> Klient
-
 #include "common.h"
+#include <iostream>
+#include <string>
 #include <unistd.h>
-#include <csignal>
 
-volatile sig_atomic_t czy_pracowac = 1;
-void zakonczenie_sym(int sig) {
-    czy_pracowac = 0;
+// ZMIENNE GLOBALNE ---
+int semid;
+int msgid;
+int shmid_zegar;
+int shmid_uslugi;
+std::string identyfikator;
+
+StanZegara* zegar;
+Usluga* cennik;
+
+#define TYP_ZLECENIE 10 
+
+// --- FUNKCJE POMOCNICZE ---
+
+void podlacz_zasoby() {
+    semid = semget(SEM_KEY, 0, 0600);
+    if (semid == -1) { perror("PRACOWNIK: Blad semget"); exit(1); }
+
+    msgid = msgget(MSG_KEY, 0600);
+    if (msgid == -1) { perror("PRACOWNIK: Blad msgget"); exit(1); }
+
+    shmid_zegar = shmget(SHM_KEY, 0, 0600);
+    if (shmid_zegar == -1) { perror("PRACOWNIK: Blad shmget Zegar"); exit(1); }
+    zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
+
+    shmid_uslugi = shmget(SHM_KEY + 1, 0, 0600);
+    if (shmid_uslugi == -1) { perror("PRACOWNIK: Blad shmget Uslugi"); exit(1); }
+    cennik = (Usluga*)shmat(shmid_uslugi, NULL, 0);
 }
 
-bool czy_obslugiwana(char marka) {
-    char samogloski[] = { 'A', 'E', 'I', 'O', 'U', 'Y' };
-    for (char s : samogloski) {
-        if (marka == s) return true;
+void wycen_naprawe(Wiadomosc* msg) {
+    msg->cena_total = 0;
+    msg->czas_total = 0;
+    for (int i = 0; i < msg->liczba_usterek; i++) {
+        int szukane_id = msg->id_uslugi[i];
+        bool znaleziono = false;
+        for (int k = 0; k < MAX_USLUG; k++) {
+            if (cennik[k].id == szukane_id) {
+                msg->cena_total += cennik[k].cena;
+                msg->czas_total += cennik[k].czas_bazowy;
+                znaleziono = true;
+                break;
+            }
+        }
+        if (!znaleziono) msg->cena_total += 50;
+        msg->czas_total += 10;
     }
-    return false;
+}
+
+// Obsluga klienta
+
+void obsluz_nowego_klienta(Wiadomosc msg) {
+    wycen_naprawe(&msg);
+
+    log(identyfikator, "Przyjmuje zgloszenie od Klienta " + std::to_string(msg.id_klienta) +
+        ". Cena: " + std::to_string(msg.cena_total) +
+        ", Czas: " + std::to_string(msg.czas_total));
+
+    msg.mtype = msg.id_klienta;
+    if (msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0) == -1) {
+        perror("PRACOWNIK: Blad wysylania oferty");
+        return;
+    }
+
+    Wiadomosc odp;
+    if (msgrcv(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0) == -1) {
+        perror("PRACOWNIK: Blad odbierania decyzji");
+        return;
+    }
+
+    if (!odp.czy_zaakceptowano) {
+        log(identyfikator, "Klient " + std::to_string(msg.id_klienta) + " ODRZUCIL wycene. Zwalniam go.");
+        return;
+    }
+
+    log(identyfikator, "Klient " + std::to_string(msg.id_klienta) + " ZAAKCEPTOWAL wycene. Szukam stanowiska...");
+
+    // Przydzial stanowiska mechanika do zlecenia
+    bool czy_specjalne = false;
+    if (odp.marka_auta == 'U' || odp.marka_auta == 'Y') {
+        int wolne_spec = semctl(semid, SEM_WARSZTAT_SPECJALNY, GETVAL);
+        if (wolne_spec > 0) {
+            log(identyfikator, "-> Kieruje na stanowisko SPECJALNE (nr 8).");
+            P(semid, SEM_WARSZTAT_SPECJALNY);
+        }
+        else {
+            log(identyfikator, "-> Specjalne zajete. Kieruje na OGOLNE.");
+            P(semid, SEM_WARSZTAT_OGOLNY);
+        }
+    }
+    else {
+        log(identyfikator, "-> Kieruje na stanowisko OGOLNE.");
+        P(semid, SEM_WARSZTAT_OGOLNY);
+    }
+
+    odp.mtype = TYP_ZLECENIE;
+    msgsnd(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
+}
+
+// Obs³uga wiadomoœci od Mechanika (Koniec naprawy LUB Pytanie o dodatkowe usterki)
+void obsluz_mechanika(Wiadomosc msg) {
+    if (msg.czy_gotowe) {
+        // Naprawa bez dodatkowych usterek
+        log(identyfikator, "Mechanik skonczyl auto Klienta " + std::to_string(msg.id_klienta) + ". Wysylam informacje do Klienta.");
+
+        msg.mtype = msg.id_klienta;
+        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+    }
+    else {
+        // Dodatkowe usterki
+        log(identyfikator, "Mechanik zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
+
+        msg.mtype = msg.id_klienta;
+        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+
+        Wiadomosc odp;
+        msgrcv(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0);
+
+        if (odp.czy_zaakceptowano) {
+            log(identyfikator, "Klient ZGODZIL SIE na dodatkowa naprawe. Przekazuje mechanikowi.");
+        }
+        else {
+            log(identyfikator, "Klient ODMOWIL dodatkowej naprawy. Przekazuje mechanikowi.");
+        }
+
+        odp.mtype = TYP_ZLECENIE;
+        msgsnd(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
+    }
+}
+
+// Obs³uga potwierdzenia wp³aty od Kasjera
+void obsluz_kasjera(Wiadomosc msg) {
+    log(identyfikator, "Kasjer potwierdzil wplate Klienta " + std::to_string(msg.id_klienta) + ". Wydaje kluczyki.");
+
+    msg.mtype = msg.id_klienta;
+    msg.czy_gotowe = true;
+    msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
 }
 
 int main() {
-    signal(SIGINT, zakonczenie_sym);
-    signal(SIGTERM, zakonczenie_sym);
+    srand(getpid());
+    identyfikator = "PRACOWNIK " + std::to_string(getpid());
+    podlacz_zasoby();
 
-    //PAMIEC DZIELONA
-    int shmid = shmget(PROJECT_KEY, sizeof(StanSerwisu), 0600);
-    if (shmid == -1) { perror("Pracownik: shmget"); return 1;}
-    StanSerwisu* stan = (StanSerwisu*)shmat(shmid, NULL, 0);
-    
-    //KOLEJKA KOMUNIKATOW
-    int msgid = msgget(MSG_QUEUE_KEY, 0600);
-    if (msgid == -1) { perror("Pracownik: msgget"); return 1; }
-    
-    //SEMAFORY
-    int semid = semget(PROJECT_KEY, 0, 0600);
-    if (semid == -1) { perror("Pracownik: semget"); return 1; }
-
-
-    pid_t mpid = getpid();
-    loguj("PRACOWNIK" + std::to_string(mpid), "Zaczynam prace");
+    log(identyfikator, "Rozpoczynam zmiane.");
 
     Wiadomosc msg;
 
-    while (czy_pracowac) {
+    while (true) {
 
-        ssize_t rozmiar = msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 1, 0);
+        ssize_t wynik = msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), -3, 0);
 
-        while (true) {
-            if (rozmiar == -1) {
-                //Ctrl+C
-                if (errno == EINTR) {
-                    if (errno == EIDRM || errno == EINVAL) break;
-                    continue;
-                }
-                if (errno == EIDRM || errno == EINVAL) { czy_pracowac = 0; break; }
-                perror("Pracownik: msgrcv error");
-                break;
-            }
+        if (wynik == -1) {
+            if (errno == EINTR) continue;
+            perror("PRACOWNIK: Blad msgrcv");
             break;
         }
-        if (!czy_pracowac) break;
 
-        pid_t pid_klienta = msg.nadawca_pid;
-        loguj("PRACOWNIK", "Odebralem zgloszenie od PID: " + std::to_string(pid_klienta));
-        if (stan->liczba_klientow_w_kolejce > 0) stan->liczba_klientow_w_kolejce--;
-
-        bool wstepna_akceptacja = false;
-        if (czy_obslugiwana(msg.marka_auta)) {
-            wstepna_akceptacja = true;
-            msg.czy_zaakceptowano = true;
-            
-            int indeks = msg.id_uslugi - 1;
-            if (indeks >= 0 && indeks < MAX_USLUG-1) {
-                msg.cena = stan->cennik[indeks].cena;
-                msg.czas = stan->cennik[indeks].czas_bazowy;
-            }
-            else {
-                msg.cena = 100;
-                msg.czas = 1;
-            }
-            loguj("PRACOWNIK", "Wycena dla PID " + std::to_string(pid_klienta)
-                + ": " + std::to_string(msg.cena) + " PLN");
+        if (msg.mtype == MSG_OD_KASJERA) {
+            obsluz_kasjera(msg);
         }
-        else {
-            wstepna_akceptacja = false;
-            msg.czy_zaakceptowano = false;
-            msg.cena = 0;
-            loguj("PRACOWNIK", "Odrzucam klienta (zla marka)." + std::to_string(pid_klienta));
+        else if (msg.mtype == MSG_OD_MECHANIKA) {
+            obsluz_mechanika(msg);
         }
-
-        msg.mtype = pid_klienta;
-        msg.nadawca_pid = mpid;
-
-        usleep(500 * 1000);//pó³ sekundy symulacji pracy
-        
-        if (msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0) == -1) {
-            perror("Pracownik: msgsnd offer failed");
-            goto koniec_obslugi;
+        else if (msg.mtype == MSG_NOWY_KLIENT) {
+            obsluz_nowego_klienta(msg);
         }
-
-        if (wstepna_akceptacja) {
-            Wiadomosc odp;
-            bool odebrano_decyzje = false;
-
-
-            while (czy_pracowac) {
-                // Czekamy na wiadomoœæ TYLKO od tego konkretnego klienta
-                if (msgrcv(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), mpid, 0) == -1) {
-                    // Obs³uga przerwania wywo³ania funkcji systemowej
-                    if (errno == EINTR) continue;
-                    perror("Pracownik: blad odbierania decyzji");
-                    break;
-                }
-                else {
-                    // Sprawdzamy czy to na pewno ten klient (dla bezpieczeñstwa)
-                    if (odp.nadawca_pid == pid_klienta) {
-                        odebrano_decyzje = true;
-                        break;
-                    }
-                }
-            }
-
-            if (odebrano_decyzje) {
-                if (odp.czy_zaakceptowano) {
-                    loguj("PRACOWNIK", "Klient " + std::to_string(pid_klienta) + " ZAAKCEPTOWAL.");
-                    // Tutaj w przysz³oœci wyœlesz do Mechanika (Lab 10 wspomina o pamiêci dzielonej/semaforach)
-                }
-                else {
-                    loguj("PRACOWNIK", "Klient " + std::to_string(pid_klienta) + " ODRZUCIL.");
-                }
-            }
-        }
-
-    koniec_obslugi:
-        // Sygnalizujemy zwolnienie stanowiska (podniesienie semafora V)
-        // Semafor nr 0 w naszym zbiorze odpowiada za wolne okienka
-        V(semid, 0);
     }
 
-    shmdt(stan);
     return 0;
-
 }
