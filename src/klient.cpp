@@ -24,11 +24,11 @@ void podlacz_zasoby() {
     msgid = msgget(MSG_KEY, 0600);
     if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
 
-    shmid_zegar = shmget(SHM_KEY, 0, 0600);
+    shmid_zegar = shmget(SHM_KEY_ZEGAR, 0, 0600);
     if (shmid_zegar == -1) { perror("KLIENT: Blad shmget Zegar"); exit(1); }
     zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 
-    shmid_uslugi = shmget(SHM_KEY + 1, 0, 0600);
+    shmid_uslugi = shmget(SHM_KEY_USLUGI, 0, 0600);
     if (shmid_uslugi == -1) { perror("KLIENT: Blad shmget Uslugi"); exit(1); }
     cennik = (Usluga*)shmat(shmid_uslugi, NULL, 0);
 }
@@ -117,6 +117,13 @@ bool czekaj_na_otwarcie(Wiadomosc* msg) {
     return false;
 }
 
+bool czy_krytyczna_lokalnie(Wiadomosc* msg) {
+    for (int i = 0; i < msg->liczba_usterek; i++) {
+        if (czy_krytyczna(msg->id_uslugi[i])) return true;
+    }
+    return false;
+}
+
 int main() {
     srand(getpid() + time(NULL));
     identyfikator = "KLIENT " + std::to_string(getpid());
@@ -125,21 +132,37 @@ int main() {
     Wiadomosc msg;
     generuj_usterki(&msg);
 
-    log(identyfikator, "Chce oddac auto marki " + std::string(1, msg.marka_auta));
-
-    if (!czekaj_na_otwarcie(&msg)) {
-        return 0;
+    if (!zegar->czy_otwarte) {
+        bool kryt = czy_krytyczna_lokalnie(&msg);
+        if (!kryt) {
+            // Jeœli to nie awaria krytyczna, klient mo¿e zrezygnowaæ, bo jest zamkniête
+            if ((rand() % 100) < 50) { // 50% szans ¿e odjedzie
+                log(identyfikator, "Serwis zamkniety. Nie chce mi sie czekac. Odjezdzam.");
+                return 0;
+            }
+        }
+        log(identyfikator, "Serwis zamkniety. Czekam na otwarcie (przed brama)...");
     }
+
+    bramka_serwisu(semid);
+
+    P(semid, SEM_LIMIT_KLIENTOW);
 
     P(semid, SEM_PRACOWNICY);
 
-    log(identyfikator, "Wchodze do biura.");
+    log(identyfikator, "Chce oddac auto marki " + std::string(1, msg.marka_auta));
 
     msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
 
     if (msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0) == -1) {
         perror("KLIENT: Blad msgrcv (negocjacje)");
         V(semid, SEM_PRACOWNICY); return 1;
+    }
+
+    if (msg.cena_total == -1) {
+        log(identyfikator, "Pracownik odmowil przyjecia auta (" + std::string(1, msg.marka_auta) + "). Odjezdzam.");
+        V(semid, SEM_PRACOWNICY);
+        return 0;
     }
 
     int szansa = rand() % 100;

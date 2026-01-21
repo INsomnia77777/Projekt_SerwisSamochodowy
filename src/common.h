@@ -22,11 +22,33 @@
 #define PLIK_KLUCZA "."
 #define ID_PROJEKTU 'S'
 
+#define ID_SEM       'S'
+#define ID_MSG       'Q'
+#define ID_ZEGAR     'Z'
+#define ID_USLUGI    'U'
+
+// Generowanie klucza ftok
+inline key_t pobierz_klucz(char id_projektu) {
+    key_t klucz = ftok(PLIK_KLUCZA, id_projektu);
+    if (klucz == -1) {
+        perror("Blad ftok (czy plik '.' istnieje?)");
+        exit(1);
+    }
+    return klucz;
+}
+
+#define SEM_KEY         pobierz_klucz(ID_SEM)
+#define MSG_KEY         pobierz_klucz(ID_MSG)
+#define SHM_KEY_ZEGAR   pobierz_klucz(ID_ZEGAR)
+#define SHM_KEY_USLUGI  pobierz_klucz(ID_USLUGI)
+
 // LIMITY I STA£E
 #define T1 60             // Decyzja dla klienta o czekaniu kiedy serwis nieczynny
-#define LICZBA_SEM 5
+#define LICZBA_SEM 7
 #define MAX_USLUG 30
 #define MAX_USTER_W_AUCIE 5
+#define MAX_KLIENTOW 100
+#define MAX_KLIENTOW_W_KOLEJCE_MSG 20
 
 const int K1 = 3;
 const int K2 = 5;
@@ -36,6 +58,7 @@ const int T_KONIEC = 24;
 const int SERWIS_OTWARCIE = 8;
 const int SERWIS_ZAMKNIECIE = 18;
 const int JEDNOSTKA_CZASU_MS = 60000; // 60000 ms = 60 sekund czasu rzeczywistego, 1 min real= 1h symulacja
+const std::string MARKI_OBSLUGIWANE = "AEIOUY";
 
 // RAPORT SYMULACJI
 #define PLIK_RAPORTU "raport_symulacji.txt"
@@ -46,7 +69,8 @@ enum SemIndex {
     SEM_ALARM = 1,              // Kolejka klientow - drugi semafor
     SEM_WARSZTAT_OGOLNY = 2,    // Stanowiska mech 1-7 (wartosc pocz. 7)
     SEM_WARSZTAT_SPECJALNY = 3, // Stanowisko mech 8 (wartosc pocz. 1 - tylko U i Y)
-    SEM_KASA = 4                // Kolejka do kasy (wartosc pocz. 1)
+    SEM_KASA = 4,               // Kolejka do kasy (wartosc pocz. 1)
+    SEM_LIMIT_KLIENTOW = 6
 };
 
 // PRIORYTETY WIADOMOŒCI
@@ -93,11 +117,6 @@ struct Wiadomosc {
     int czas_total;
 };
 
-//Klucze (ftok) - trzeba to bedzie zaktualizowac
-#define SHM_KEY 0xB12345
-#define MSG_KEY 0xA67890
-#define SEM_KEY 0xC12345
-
 //Funkcje pomocnicze
 
 //SEMAFORY
@@ -128,17 +147,25 @@ inline void V(int semid, int sem_num) {
     }
 }
 
-inline void log(std::string nadawca, std::string komunikat) {
+extern StanZegara* zegar;
 
-    std::cout << "[" << nadawca << "] " << komunikat << std::endl;
+inline void log(std::string nadawca, std::string komunikat) {
+    std::string czas_str = "[INFO] "; // Domyœlnie, gdyby zegar nie by³ pod³¹czony
+
+    if (zegar != nullptr) {
+        char bufor[64];
+        sprintf(bufor, "[DZIEN: %d | %02d:%02d] ", zegar->dzien, zegar->godzina, zegar->minuta);
+        czas_str = std::string(bufor);
+    }
+
+    std::string pelny_komunikat = czas_str + "[" + nadawca + "] " + komunikat;
+
+    std::cout << pelny_komunikat << std::endl;
 
     std::ofstream plik(PLIK_RAPORTU, std::ios::app);
     if (plik.is_open()) {
-        plik << "[" << nadawca << "] " << komunikat << std::endl;
+        plik << pelny_komunikat << std::endl;
         plik.close();
-    }
-    else {
-        perror("Blad zapisu do raportu");
     }
 }
 
@@ -164,6 +191,20 @@ inline void wczytaj_uslugi(Usluga* tablica) {
     }
     plik.close();
     std::cout << "Wczytano " << i << " uslug do pamieci dzielonej." << std::endl;
+}
+
+inline void bramka_serwisu(int semid) {
+    struct sembuf operacje[1];
+
+    operacje[0].sem_num = SEM_ALARM;
+    operacje[0].sem_op = 0;
+    operacje[0].sem_flg = 0;
+
+    if (semop(semid, operacje, 1) == -1) {
+        if (errno != EINTR) {
+            perror("Blad bramka_serwisu");
+        }
+    }
 }
 
 #endif

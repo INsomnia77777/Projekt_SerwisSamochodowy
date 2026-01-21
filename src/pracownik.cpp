@@ -19,17 +19,17 @@ Usluga* cennik;
 
 void podlacz_zasoby() {
     semid = semget(SEM_KEY, 0, 0600);
-    if (semid == -1) { perror("PRACOWNIK: Blad semget"); exit(1); }
+    if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
 
     msgid = msgget(MSG_KEY, 0600);
-    if (msgid == -1) { perror("PRACOWNIK: Blad msgget"); exit(1); }
+    if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
 
-    shmid_zegar = shmget(SHM_KEY, 0, 0600);
-    if (shmid_zegar == -1) { perror("PRACOWNIK: Blad shmget Zegar"); exit(1); }
+    shmid_zegar = shmget(SHM_KEY_ZEGAR, 0, 0600);
+    if (shmid_zegar == -1) { perror("KLIENT: Blad shmget Zegar"); exit(1); }
     zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 
-    shmid_uslugi = shmget(SHM_KEY + 1, 0, 0600);
-    if (shmid_uslugi == -1) { perror("PRACOWNIK: Blad shmget Uslugi"); exit(1); }
+    shmid_uslugi = shmget(SHM_KEY_USLUGI, 0, 0600);
+    if (shmid_uslugi == -1) { perror("KLIENT: Blad shmget Uslugi"); exit(1); }
     cennik = (Usluga*)shmat(shmid_uslugi, NULL, 0);
 }
 
@@ -55,6 +55,29 @@ void wycen_naprawe(Wiadomosc* msg) {
 // Obsluga klienta
 
 void obsluz_nowego_klienta(Wiadomosc msg) {
+
+    // Sprawdzenie marki
+    bool czy_obslugiwana = false;
+    for (char m : MARKI_OBSLUGIWANE) {
+        if (msg.marka_auta == m) {
+            czy_obslugiwana = true;
+            break;
+        }
+    }
+
+    if (!czy_obslugiwana) {
+        log(identyfikator, "Nie obslugujemy tej marki. Klient " + std::to_string(msg.id_klienta) +
+            ", marka: " + std::string(1, msg.marka_auta));
+
+        msg.mtype = msg.id_klienta;
+        msg.czy_zaakceptowano = false;
+        msg.cena_total = -1; 
+
+        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        return;
+    }
+
+    // Wycenianie naprawy
     wycen_naprawe(&msg);
 
     log(identyfikator, "Przyjmuje zgloszenie od Klienta " + std::to_string(msg.id_klienta) +

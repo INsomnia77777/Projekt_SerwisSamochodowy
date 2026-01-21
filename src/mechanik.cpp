@@ -7,10 +7,12 @@
 // ZMIENNE GLOBALNE
 int semid;
 int msgid;
+int shmid_zegar;
 int shmid_uslugi;
 std::string identyfikator;
 int id_mechanika = 0;
 
+StanZegara* zegar;
 Usluga* cennik;
 
 #define TYP_ZLECENIE 10 
@@ -19,14 +21,18 @@ Usluga* cennik;
 
 void podlacz_zasoby() {
     semid = semget(SEM_KEY, 0, 0600);
-    if (semid == -1) { perror("MECHANIK: Blad semget"); exit(1); }
+    if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
 
     msgid = msgget(MSG_KEY, 0600);
-    if (msgid == -1) { perror("MECHANIK: Blad msgget"); exit(1); }
+    if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
 
-    shmid_uslugi = shmget(SHM_KEY + 1, 0, 0600);
-    if (shmid_uslugi == -1) { perror("MECHANIK: Blad shmget Uslugi"); exit(1); }
+    shmid_uslugi = shmget(SHM_KEY_USLUGI, 0, 0600);
+    if (shmid_uslugi == -1) { perror("KLIENT: Blad shmget Uslugi"); exit(1); }
     cennik = (Usluga*)shmat(shmid_uslugi, NULL, 0);
+
+    shmid_zegar = shmget(SHM_KEY_ZEGAR, 0, 0600);
+    if (shmid_zegar == -1) { perror("MECHANIK: Blad shmget Zegar"); exit(1); }
+    zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 }
 
 // Funkcja obliczaj¹ca czas naprawy na podstawie listy us³ug
@@ -132,24 +138,18 @@ int main(int argc, char* argv[]) {
         // Koniec naprawy
         log(identyfikator, "Naprawa zakonczona. Zwalniam stanowisko.");
 
-        msg.czy_gotowe = true;
-        msg.mtype = MSG_OD_MECHANIKA;
-        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
-
-        //Zwalnianie semafora
-
         if (msg.marka_auta == 'U' || msg.marka_auta == 'Y') {
-
-            if (id_mechanika == 8) {
-                V(semid, SEM_WARSZTAT_SPECJALNY);
-            }
-            else {
-                V(semid, SEM_WARSZTAT_OGOLNY);
-            }
+            if (id_mechanika == 8) V(semid, SEM_WARSZTAT_SPECJALNY);
+            else V(semid, SEM_WARSZTAT_OGOLNY);
         }
         else {
             V(semid, SEM_WARSZTAT_OGOLNY);
         }
+
+        // --- TERAZ ZG£ASZAMY KONIEC ---
+        msg.czy_gotowe = true;
+        msg.mtype = MSG_OD_MECHANIKA;
+        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
     }
 
     return 0;
