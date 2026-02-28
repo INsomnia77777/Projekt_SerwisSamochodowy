@@ -5,7 +5,9 @@
 
 // ZMIENNE GLOBALNE ---
 int semid;
-int msgid;
+int msgid_klient;
+int msgid_mechanik;
+int msgid_kasjer;
 int shmid_zegar;
 int shmid_uslugi;
 std::string identyfikator;
@@ -109,24 +111,6 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
 
     log(identyfikator, "Klient " + std::to_string(msg.id_klienta) + " ZAAKCEPTOWAL wycene. Szukam stanowiska...");
 
-    // Przydzial stanowiska mechanika do zlecenia
-    bool czy_specjalne = false;
-    if (odp.marka_auta == 'U' || odp.marka_auta == 'Y') {
-        int wolne_spec = semctl(semid, SEM_WARSZTAT_SPECJALNY, GETVAL);
-        if (wolne_spec > 0) {
-            log(identyfikator, "-> Kieruje na stanowisko SPECJALNE (nr 8).");
-            P(semid, SEM_WARSZTAT_SPECJALNY);
-        }
-        else {
-            log(identyfikator, "-> Specjalne zajete. Kieruje na OGOLNE.");
-            P(semid, SEM_WARSZTAT_OGOLNY);
-        }
-    }
-    else {
-        log(identyfikator, "-> Kieruje na stanowisko OGOLNE.");
-        P(semid, SEM_WARSZTAT_OGOLNY);
-    }
-
     odp.mtype = TYP_ZLECENIE;
     msgsnd(msgid_mechanik, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
 }
@@ -142,6 +126,7 @@ void obsluz_mechanika(Wiadomosc msg) {
     }
     else {
         // Dodatkowe usterki
+        pid_t id_mechanika = msg.nadawca_pid;
         log(identyfikator, "Mechanik zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
 
         msg.mtype = msg.id_klienta;
@@ -157,7 +142,7 @@ void obsluz_mechanika(Wiadomosc msg) {
             log(identyfikator, "Klient ODMOWIL dodatkowej naprawy. Przekazuje mechanikowi.");
         }
 
-        odp.mtype = TYP_ZLECENIE;
+        odp.mtype = id_mechanika;
         msgsnd(msgid_mechanik, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
     }
 }

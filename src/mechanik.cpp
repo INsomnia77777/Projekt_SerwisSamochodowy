@@ -84,6 +84,14 @@ int main(int argc, char* argv[]) {
             break;
         }
 
+        if (msg.marka_auta == 'U' || msg.marka_auta == 'Y') {
+            if (id_mechanika == 8) P(semid, SEM_WARSZTAT_SPECJALNY);
+            else P(semid, SEM_WARSZTAT_OGOLNY);
+        }
+        else {
+            P(semid, SEM_WARSZTAT_OGOLNY);
+        }
+
         log(identyfikator, "Pobralem auto Klienta " + std::to_string(msg.id_klienta) +
             " [" + std::string(1, msg.marka_auta) + "]");
 
@@ -108,6 +116,7 @@ int main(int argc, char* argv[]) {
 
             msg.cena_total += cena_nowej;
 
+            msg.nadawca_pid = getpid();
             msg.czy_gotowe = false;
             msg.mtype = MSG_OD_MECHANIKA;
             msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
@@ -115,7 +124,7 @@ int main(int argc, char* argv[]) {
 
             // Czekamy na decyzjê
             log(identyfikator, "Czekam na decyzje klienta...");
-            msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), TYP_ZLECENIE, 0);
+            msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0);
 
             if (msg.czy_zaakceptowano) {
                 

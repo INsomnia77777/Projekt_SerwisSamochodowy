@@ -20,7 +20,7 @@
 #include <string>
 
 #define PLIK_KLUCZA "."
-#define ID_PROJEKTU 'S'
+#define ID_PROJEKTU 'T'
 
 #define ID_SEM       'S'
 #define ID_MSG_KLIENT   'Q' // Kolejka Pracownik - Klient
@@ -48,7 +48,7 @@ inline key_t pobierz_klucz(char id_projektu) {
 
 // LIMITY I STA£E
 #define T1 60             // Decyzja dla klienta o czekaniu kiedy serwis nieczynny
-#define LICZBA_SEM 7
+#define LICZBA_SEM 8
 #define MAX_USLUG 30
 #define MAX_USTER_W_AUCIE 5
 #define MAX_KLIENTOW 100

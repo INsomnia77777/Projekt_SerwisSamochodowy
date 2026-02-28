@@ -163,6 +163,7 @@ int main() {
     if (msg.cena_total == -1) {
         log(identyfikator, "Pracownik odmowil przyjecia auta (" + std::string(1, msg.marka_auta) + "). Odjezdzam.");
         V(semid, SEM_PRACOWNICY);
+        V(semid, SEM_LIMIT_KLIENTOW);
         return 0;
     }
 
@@ -172,12 +173,15 @@ int main() {
         msg.czy_zaakceptowano = false;
         msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         V(semid, SEM_PRACOWNICY);
+        V(semid, SEM_LIMIT_KLIENTOW);
         return 0;
     }
 
     log(identyfikator, "Zlecam naprawe.");
     msg.czy_zaakceptowano = true;
     msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+
+    V(semid, SEM_PRACOWNICY);
 
     while (true) {
         msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0);
@@ -201,7 +205,6 @@ int main() {
 
     log(identyfikator, "Auto gotowe! Ide do kasy. Kwota: " + std::to_string(msg.cena_total));
 
-    V(semid, SEM_PRACOWNICY);
     P(semid, SEM_KASA);
 
     msg.mtype = MSG_PLATNOSC;
@@ -214,6 +217,7 @@ int main() {
 
     log(identyfikator, "Mam kluczyki. Do widzenia!");
     V(semid, SEM_KASA);
+    V(semid, SEM_LIMIT_KLIENTOW);
     shmdt(zegar);
     shmdt(cennik);
 

@@ -43,7 +43,6 @@ int main() {
             break;
         }
 
-        //komunikaty od niego siê nie wyœwietlaj¹
         log(identyfikator, "Przyjmuje wplate " + std::to_string(msg.cena_total) +
             " od Klienta " + std::to_string(msg.id_klienta));
 
