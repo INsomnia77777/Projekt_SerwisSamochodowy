@@ -6,7 +6,9 @@
 
 // Zmienne dla f. koniec
 int semid = -1;
-int msgid = -1;
+int msgid_klient = -1;
+int msgid_mechanik = -1;
+int msgid_kasjer = -1;
 int shmid_zegar = -1;
 int shmid_uslugi = -1;
 std::vector<pid_t> procesy_potomne;
@@ -46,9 +48,10 @@ void koniec(int sig) {
     if (semid != -1) {
         semctl(semid, 0, IPC_RMID);
     }
-    if (msgid != -1) {
-        msgctl(msgid, IPC_RMID, NULL);
-    }
+
+    if (msgid_klient != -1) msgctl(msgid_klient, IPC_RMID, NULL);
+    if (msgid_mechanik != -1) msgctl(msgid_mechanik, IPC_RMID, NULL);
+    if (msgid_kasjer != -1) msgctl(msgid_kasjer, IPC_RMID, NULL);
 
     if (zegar != nullptr) {
         shmdt(zegar);
@@ -81,10 +84,17 @@ void inicjalizacja() {
     semctl(semid, SEM_WARSZTAT_SPECJALNY, SETVAL, 1); // 1 stanowisko specjalne
     semctl(semid, SEM_ALARM, SETVAL, 1);              // Brama nocna zamknięta
     semctl(semid, 5, SETVAL, 1);                      // Mutex logowania
+    semctl(semid, SEM_DZWONEK, SETVAL, 0);            // Dzwonek dla pracownika
 
-    // 2. Kolejka
-    msgid = msgget(pobierz_klucz(ID_MSG), IPC_CREAT | 0600);
-    if (msgid == -1) { perror("Blad msgget"); exit(1); }
+    // 2. Kolejki
+    msgid_klient = msgget(MSG_KEY_KLIENT, IPC_CREAT | 0600);
+    if (msgid_klient == -1) { perror("Blad msgget klient"); exit(1); }
+
+    msgid_mechanik = msgget(MSG_KEY_MECHANIK, IPC_CREAT | 0600);
+    if (msgid_mechanik == -1) { perror("Blad msgget mechanik"); exit(1); }
+
+    msgid_kasjer = msgget(MSG_KEY_KASJER, IPC_CREAT | 0600);
+    if (msgid_kasjer == -1) { perror("Blad msgget kasjer"); exit(1); }
 
     // 3. Pamięć - Zegar
     shmid_zegar = shmget(pobierz_klucz(ID_ZEGAR), sizeof(StanZegara), IPC_CREAT | 0600);

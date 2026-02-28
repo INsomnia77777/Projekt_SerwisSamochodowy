@@ -15,13 +15,13 @@ StanZegara* zegar;
 
 void podlacz_zasoby() {
     semid = semget(SEM_KEY, 0, 0600);
-    if (semid == -1) { perror("KASJER: Blad semget"); exit(1); }
+    if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
 
-    msgid = msgget(MSG_KEY, 0600);
-    if (msgid == -1) { perror("KASJER: Blad msgget"); exit(1); }
+    msgid = msgget(MSG_KEY_KASJER, 0600);
+    if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
 
-    shmid_zegar = shmget(SHM_KEY, 0, 0600);
-    if (shmid_zegar == -1) { perror("KASJER: Blad shmget Zegar"); exit(1); }
+    shmid_zegar = shmget(SHM_KEY_ZEGAR, 0, 0600);
+    if (shmid_zegar == -1) { perror("KLIENT: Blad shmget Zegar"); exit(1); }
     zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 }
 
@@ -43,6 +43,7 @@ int main() {
             break;
         }
 
+        //komunikaty od niego siê nie wyœwietlaj¹
         log(identyfikator, "Przyjmuje wplate " + std::to_string(msg.cena_total) +
             " od Klienta " + std::to_string(msg.id_klienta));
 
@@ -55,6 +56,7 @@ int main() {
             perror("KASJER: Blad msgsnd");
         }
         else {
+            V(semid, SEM_DZWONEK);
             log(identyfikator, "Zaksiegowano wplate. Wyslalem info do Pracownika.");
         }
     }

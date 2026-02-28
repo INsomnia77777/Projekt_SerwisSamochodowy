@@ -23,7 +23,7 @@ void podlacz_zasoby() {
     semid = semget(SEM_KEY, 0, 0600);
     if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
 
-    msgid = msgget(MSG_KEY, 0600);
+    msgid = msgget(MSG_KEY_MECHANIK, 0600);
     if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
 
     shmid_uslugi = shmget(SHM_KEY_USLUGI, 0, 0600);
@@ -111,6 +111,7 @@ int main(int argc, char* argv[]) {
             msg.czy_gotowe = false;
             msg.mtype = MSG_OD_MECHANIKA;
             msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+            V(semid, SEM_DZWONEK);
 
             // Czekamy na decyzjê
             log(identyfikator, "Czekam na decyzje klienta...");
@@ -150,6 +151,7 @@ int main(int argc, char* argv[]) {
         msg.czy_gotowe = true;
         msg.mtype = MSG_OD_MECHANIKA;
         msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        V(semid, SEM_DZWONEK);
     }
 
     return 0;

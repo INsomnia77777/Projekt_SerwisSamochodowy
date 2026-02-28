@@ -21,8 +21,14 @@ void podlacz_zasoby() {
     semid = semget(SEM_KEY, 0, 0600);
     if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
 
-    msgid = msgget(MSG_KEY, 0600);
-    if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
+    msgid_klient = msgget(MSG_KEY_KLIENT, 0600);
+    if (msgid_klient == -1) { perror("PRACOWNIK: Blad msgget_klient"); exit(1); }
+
+    msgid_mechanik = msgget(MSG_KEY_MECHANIK, 0600);
+    if (msgid_mechanik == -1) { perror("PRACOWNIK: Blad msgget_mechanik"); exit(1); }
+
+    msgid_kasjer = msgget(MSG_KEY_KASJER, 0600);
+    if (msgid_kasjer == -1) { perror("PRACOWNIK: Blad msgget_kasjer"); exit(1); }
 
     shmid_zegar = shmget(SHM_KEY_ZEGAR, 0, 0600);
     if (shmid_zegar == -1) { perror("KLIENT: Blad shmget Zegar"); exit(1); }
@@ -73,7 +79,7 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
         msg.czy_zaakceptowano = false;
         msg.cena_total = -1; 
 
-        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         return;
     }
 
@@ -85,13 +91,13 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
         ", Czas: " + std::to_string(msg.czas_total));
 
     msg.mtype = msg.id_klienta;
-    if (msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0) == -1) {
+    if (msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0) == -1) {
         perror("PRACOWNIK: Blad wysylania oferty");
         return;
     }
 
     Wiadomosc odp;
-    if (msgrcv(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0) == -1) {
+    if (msgrcv(msgid_klient, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0) == -1) {
         perror("PRACOWNIK: Blad odbierania decyzji");
         return;
     }
@@ -122,7 +128,7 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
     }
 
     odp.mtype = TYP_ZLECENIE;
-    msgsnd(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
+    msgsnd(msgid_mechanik, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
 }
 
 // Obs³uga wiadomoœci od Mechanika (Koniec naprawy LUB Pytanie o dodatkowe usterki)
@@ -132,17 +138,17 @@ void obsluz_mechanika(Wiadomosc msg) {
         log(identyfikator, "Mechanik skonczyl auto Klienta " + std::to_string(msg.id_klienta) + ". Wysylam informacje do Klienta.");
 
         msg.mtype = msg.id_klienta;
-        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
     }
     else {
         // Dodatkowe usterki
         log(identyfikator, "Mechanik zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
 
         msg.mtype = msg.id_klienta;
-        msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
 
         Wiadomosc odp;
-        msgrcv(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0);
+        msgrcv(msgid_klient, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0);
 
         if (odp.czy_zaakceptowano) {
             log(identyfikator, "Klient ZGODZIL SIE na dodatkowa naprawe. Przekazuje mechanikowi.");
@@ -152,7 +158,7 @@ void obsluz_mechanika(Wiadomosc msg) {
         }
 
         odp.mtype = TYP_ZLECENIE;
-        msgsnd(msgid, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
+        msgsnd(msgid_mechanik, &odp, sizeof(Wiadomosc) - sizeof(long), 0);
     }
 }
 
@@ -162,7 +168,7 @@ void obsluz_kasjera(Wiadomosc msg) {
 
     msg.mtype = msg.id_klienta;
     msg.czy_gotowe = true;
-    msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+    msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
 }
 
 int main() {
@@ -176,21 +182,23 @@ int main() {
 
     while (true) {
 
-        ssize_t wynik = msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), -3, 0);
+        P(semid, SEM_DZWONEK);
 
-        if (wynik == -1) {
-            if (errno == EINTR) continue;
-            perror("PRACOWNIK: Blad msgrcv");
-            break;
-        }
-
-        if (msg.mtype == MSG_OD_KASJERA) {
-            obsluz_kasjera(msg);
-        }
-        else if (msg.mtype == MSG_OD_MECHANIKA) {
+        // 1. Priorytet: Mechanik
+        if (msgrcv(msgid_mechanik, &msg, sizeof(Wiadomosc) - sizeof(long), MSG_OD_MECHANIKA, IPC_NOWAIT) != -1) {
             obsluz_mechanika(msg);
         }
-        else if (msg.mtype == MSG_NOWY_KLIENT) {
+        // 2. Priorytet: Kasjer
+        else if (msgrcv(msgid_kasjer, &msg, sizeof(Wiadomosc) - sizeof(long), MSG_OD_KASJERA, IPC_NOWAIT) != -1) {
+            obsluz_kasjera(msg);
+        }
+        // 3. P³atnoœæ od klienta
+        else if (msgrcv(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), MSG_PLATNOSC, IPC_NOWAIT) != -1) {
+            msg.mtype = MSG_PLATNOSC;
+            msgsnd(msgid_kasjer, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+        }
+        // 4. Nowy Klient
+        else if (msgrcv(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), MSG_NOWY_KLIENT, IPC_NOWAIT) != -1) {
             obsluz_nowego_klienta(msg);
         }
     }

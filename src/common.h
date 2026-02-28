@@ -23,7 +23,9 @@
 #define ID_PROJEKTU 'S'
 
 #define ID_SEM       'S'
-#define ID_MSG       'Q'
+#define ID_MSG_KLIENT   'Q' // Kolejka Pracownik - Klient
+#define ID_MSG_MECHANIK 'M' // Kolejka Pracownik - Mechanik
+#define ID_MSG_KASJER   'K' // Kolejka Pracownik - Kasjer
 #define ID_ZEGAR     'Z'
 #define ID_USLUGI    'U'
 
@@ -38,7 +40,9 @@ inline key_t pobierz_klucz(char id_projektu) {
 }
 
 #define SEM_KEY         pobierz_klucz(ID_SEM)
-#define MSG_KEY         pobierz_klucz(ID_MSG)
+#define MSG_KEY_KLIENT     pobierz_klucz(ID_MSG_KLIENT)
+#define MSG_KEY_MECHANIK   pobierz_klucz(ID_MSG_MECHANIK)
+#define MSG_KEY_KASJER     pobierz_klucz(ID_MSG_KASJER)
 #define SHM_KEY_ZEGAR   pobierz_klucz(ID_ZEGAR)
 #define SHM_KEY_USLUGI  pobierz_klucz(ID_USLUGI)
 
@@ -70,7 +74,8 @@ enum SemIndex {
     SEM_WARSZTAT_OGOLNY = 2,    // Stanowiska mech 1-7 (wartosc pocz. 7)
     SEM_WARSZTAT_SPECJALNY = 3, // Stanowisko mech 8 (wartosc pocz. 1 - tylko U i Y)
     SEM_KASA = 4,               // Kolejka do kasy (wartosc pocz. 1)
-    SEM_LIMIT_KLIENTOW = 6
+    SEM_LIMIT_KLIENTOW = 6,
+    SEM_DZWONEK = 7
 };
 
 // PRIORYTETY WIADOMOŒCI

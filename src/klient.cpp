@@ -21,7 +21,7 @@ void podlacz_zasoby() {
     semid = semget(SEM_KEY, 0, 0600);
     if (semid == -1) { perror("KLIENT: Blad semget"); exit(1); }
 
-    msgid = msgget(MSG_KEY, 0600);
+    msgid = msgget(MSG_KEY_KLIENT, 0600);
     if (msgid == -1) { perror("KLIENT: Blad msgget"); exit(1); }
 
     shmid_zegar = shmget(SHM_KEY_ZEGAR, 0, 0600);
@@ -153,6 +153,7 @@ int main() {
     log(identyfikator, "Chce oddac auto marki " + std::string(1, msg.marka_auta));
 
     msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+    V(semid, SEM_DZWONEK);
 
     if (msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0) == -1) {
         perror("KLIENT: Blad msgrcv (negocjacje)");
@@ -203,8 +204,9 @@ int main() {
     V(semid, SEM_PRACOWNICY);
     P(semid, SEM_KASA);
 
-    msg.mtype = MSG_OD_KASJERA;
+    msg.mtype = MSG_PLATNOSC;
     msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
+    V(semid, SEM_DZWONEK);
 
     log(identyfikator, "Zaplacilem. Czekam na kluczyki.");
 
