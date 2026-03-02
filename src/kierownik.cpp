@@ -29,6 +29,7 @@ int main(int argc, char* argv[]) {
     if (argc < 2) {
         std::cerr << "Uzycie: " << argv[0] << " <numer_sygnalu>\n";
         std::cerr << "Dostepne komendy:\n";
+        std::cerr << "  1 - Zamknij stanowisko (Uzycie: ./kierownik 1 <PID_MECHANIKA>)\n";
         std::cerr << "  4 - Pozar (Natychmiastowa ewakuacja)\n";
         return 1;
     }
@@ -36,6 +37,21 @@ int main(int argc, char* argv[]) {
     podlacz_zasoby();
     
     switch (typ_alarmu) {
+    case 1:
+        if (argc < 3) {
+            std::cerr << "[BLAD] Zapomniales podac PID mechanika!\n";
+            std::cerr << "Przyklad: ./kierownik 1 12345\n";
+        }
+        else {
+            pid_t pid_mechanika = std::stoi(argv[2]);
+            std::cout << "[KIEROWNIK] Wysylam polecenie zamkniecia stanowiska do mechanika (PID: " << pid_mechanika << ").\n";
+
+            if (kill(pid_mechanika, 1) == -1) {
+                perror("KIEROWNIK: Blad wysylania sygnalu 1 do mechanika");
+            }
+        }
+        break;
+
     case 4:
         sygnal4_pozar();
         break;

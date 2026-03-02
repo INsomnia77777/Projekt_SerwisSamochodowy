@@ -11,6 +11,7 @@ int shmid_zegar;
 int shmid_uslugi;
 std::string identyfikator;
 int id_mechanika = 0;
+bool zamykam_stanowisko = false;
 
 StanZegara* zegar;
 Usluga* cennik;
@@ -53,13 +54,29 @@ int oblicz_czas_naprawy(Wiadomosc* msg) {
 }
 
 void symuluj_prace(int jednostki_czasu) {
-    int przelicznik = 50000;
+    log(identyfikator, "Rozpoczynam naprawe... (Czas: " + std::to_string(jednostki_czasu) + " min symulowanych)");
 
-    log(identyfikator, "Rozpoczynam naprawe... (Czas: " + std::to_string(jednostki_czasu) + ")");
-    usleep(jednostki_czasu * przelicznik);
+    int minuty_start = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
+    int minuty_koniec = minuty_start + jednostki_czasu;
+
+    while (true) {
+        int aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
+
+        if (aktualne_minuty >= minuty_koniec) {
+            break;
+        }
+
+        usleep(10000);
+    }
 }
 
 // OBS£UGA SYGNA£ÓW
+
+//Sygna³1 - zamkniêcie stanowiska
+void sygnal1_zamkniecie(int sig) {
+    zamykam_stanowisko = true;
+    log(identyfikator, "Odebralem rozkaz od Kierownika! Zamkne stanowisko jak tylko skoncze naprawe.");
+}
 
 // Sygna³4 - po¿ar
 void ewakuacja(int sig) {
@@ -82,8 +99,9 @@ int main(int argc, char* argv[]) {
     identyfikator = "MECHANIK " + std::to_string(id_mechanika);
     podlacz_zasoby();
     signal(4, ewakuacja);
+    signal(1, sygnal1_zamkniecie);
 
-    log(identyfikator, "Gotowy do pracy.");
+    log(identyfikator, "Gotowy do pracy. PID(" + std::to_string(getpid()) + ")");
 
     Wiadomosc msg;
 
@@ -91,7 +109,20 @@ int main(int argc, char* argv[]) {
         ssize_t wynik = msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), TYP_ZLECENIE, 0);
 
         if (wynik == -1) {
-            if (errno == EINTR) continue;
+            //SYGNA£1
+            if (errno == EINTR) {
+                if (zamykam_stanowisko) {
+                    log(identyfikator, "Zamykam stanowisko - rozkaz Kierownika");
+
+                    if (id_mechanika == 8) P(semid, SEM_WARSZTAT_SPECJALNY);
+                    else P(semid, SEM_WARSZTAT_OGOLNY);
+
+                    shmdt(zegar);
+                    shmdt(cennik);
+                    return 0;
+                }
+                continue;
+            }
             perror("MECHANIK: Blad msgrcv");
             break;
         }
@@ -161,20 +192,30 @@ int main(int argc, char* argv[]) {
         // Koniec naprawy
         log(identyfikator, "Naprawa dla Klienta " + std::to_string(msg.id_klienta) + " zakonczona. Zwalniam stanowisko.");
 
-        if (msg.marka_auta == 'U' || msg.marka_auta == 'Y') {
-            if (id_mechanika == 8) V(semid, SEM_WARSZTAT_SPECJALNY);
-            else V(semid, SEM_WARSZTAT_OGOLNY);
+        if (!zamykam_stanowisko) {
+            if (msg.marka_auta == 'U' || msg.marka_auta == 'Y') {
+                if (id_mechanika == 8) V(semid, SEM_WARSZTAT_SPECJALNY);
+                else V(semid, SEM_WARSZTAT_OGOLNY);
+            }
+            else {
+                V(semid, SEM_WARSZTAT_OGOLNY);
+            }
         }
         else {
-            V(semid, SEM_WARSZTAT_OGOLNY);
+            log(identyfikator, "Zamykam stanowisko - rozkaz Kierownika");
         }
 
-        // --- TERAZ ZG£ASZAMY KONIEC ---
         msg.id_mechanika = id_mechanika;
         msg.czy_gotowe = true;
         msg.mtype = MSG_OD_MECHANIKA;
         msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         V(semid, SEM_DZWONEK);
+
+        if (zamykam_stanowisko) {
+            shmdt(zegar);
+            shmdt(cennik);
+            return 0;
+        }
     }
 
     return 0;
