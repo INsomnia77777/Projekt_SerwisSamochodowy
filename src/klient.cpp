@@ -150,6 +150,15 @@ int main() {
 
     P(semid, SEM_PRACOWNICY);
 
+    if (!zegar->czy_otwarte) {
+        log(identyfikator, "Serwis wlasnie zamknieto, a ja nie zdazylem zlozyc zlecenia. Musze wyjsc.");
+        V(semid, SEM_PRACOWNICY);
+        V(semid, SEM_LIMIT_KLIENTOW);
+        shmdt(zegar);
+        shmdt(cennik);
+        return 0;
+    }
+
     log(identyfikator, "Chce oddac auto marki " + std::string(1, msg.marka_auta));
 
     msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);

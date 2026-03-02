@@ -158,41 +158,43 @@ int main() {
         int aktualni = (int)procesy_potomne.size() - LICZBA_PERSONELU; //
         zegar->liczba_klientow = (aktualni < 0) ? 0 : aktualni;
 
-        // Otwieranie stanowisk
-        if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
-            V(semid, SEM_PRACOWNICY);
-            V(semid, SEM_BUDZIK_2);
-            zegar->otwarte_stanowiska = 2;
-            log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 2. stanowisko obslugi!");
-        }
-        else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow > K2) {
-            V(semid, SEM_PRACOWNICY);
-            V(semid, SEM_BUDZIK_3);
-            zegar->otwarte_stanowiska = 3;
-            log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 3. stanowisko obslugi!");
-        }
-
-        // Zamykanie stanowisk
-        if (zegar->otwarte_stanowiska == 3 && zegar->liczba_klientow <= 3) {
-            struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
-            if (semop(semid, op, 1) != -1) {
-                struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_3; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
-                semop(semid, op_budzik, 1);
-
+        if (zegar->czy_otwarte) {
+            // Otwieranie stanowisk
+            if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
+                V(semid, SEM_PRACOWNICY);
+                V(semid, SEM_BUDZIK_2);
                 zegar->otwarte_stanowiska = 2;
-                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Zamykam 3. stanowisko.");
+                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 2. stanowisko obslugi!");
+            }
+            else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow > K2) {
+                V(semid, SEM_PRACOWNICY);
+                V(semid, SEM_BUDZIK_3);
+                zegar->otwarte_stanowiska = 3;
+                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 3. stanowisko obslugi!");
             }
         }
-        else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow <= 2) {
-            struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
-            if (semop(semid, op, 1) != -1) {
-                struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_2; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
-                semop(semid, op_budzik, 1);
 
-                zegar->otwarte_stanowiska = 1;
-                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Zamykam 2. stanowisko.");
+            // Zamykanie stanowisk
+            if (zegar->otwarte_stanowiska == 3 && (zegar->liczba_klientow <= 3 || !zegar->czy_otwarte)) {
+                struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
+                if (semop(semid, op, 1) != -1) {
+                    struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_3; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
+                    semop(semid, op_budzik, 1);
+
+                    zegar->otwarte_stanowiska = 2;
+                    log("STANOWISKA", "Zamykam 3. stanowisko (Kolejka: " + std::to_string(zegar->liczba_klientow) + " os.");
+                }
             }
-        }
+            else if (zegar->otwarte_stanowiska == 2 && (zegar->liczba_klientow <= 2 || !zegar->czy_otwarte)) {
+                struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
+                if (semop(semid, op, 1) != -1) {
+                    struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_2; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
+                    semop(semid, op_budzik, 1);
+
+                    zegar->otwarte_stanowiska = 1;
+                    log("STANOWISKA", "Zamykam 2. stanowisko (Kolejka: " + std::to_string(zegar->liczba_klientow) + " os.");
+                }
+            }
 
         if (zegar->minuta >= 60) {
             zegar->minuta = 0;
