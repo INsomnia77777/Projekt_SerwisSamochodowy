@@ -3,6 +3,7 @@
 #include <sys/wait.h>
 #include <vector>
 #include <algorithm>
+#include <sstream>
 
 // Zmienne dla f. koniec
 int semid = -1;
@@ -72,6 +73,11 @@ void koniec(int sig) {
 }
 
 void inicjalizacja() {
+
+    // Czyszczenie raportu
+    std::ofstream plik_start(PLIK_RAPORTU, std::ios::trunc);
+    plik_start.close();
+
     // 1. Semafor
     semid = semget(pobierz_klucz(ID_SEM), LICZBA_SEM, IPC_CREAT | 0600);
     if (semid == -1) { perror("Blad semget"); exit(1); }
@@ -208,22 +214,31 @@ int main() {
 
         if (zegar->minuta == 0) {
 
-            const int LICZBA_PERSONELU = 12;
+            std::stringstream ss;
 
             long wszystkie_procesy = procesy_potomne.size();
-            long liczba_klientow = wszystkie_procesy - LICZBA_PERSONELU;
 
-            if (liczba_klientow < 0) liczba_klientow = 0;
-
-            std::cout << "\n----------------------------------------" << std::endl;
+            ss << "\n----------------------------------------\n";
             char bufor[100];
-            sprintf(bufor, "[RAPORT GODZINOWY %02d:00]", zegar->godzina);
-            std::cout << bufor << std::endl;
-            std::cout << " > Wszystkie procesy: " << wszystkie_procesy << std::endl;
-            std::cout << " > Personel (staly):  " << LICZBA_PERSONELU << std::endl;
-            std::cout << " > AKTYWNI KLIENCI:   " << zegar->liczba_klientow << std::endl;
-            std::cout << " > Otwarte stanowiska:   " << zegar->otwarte_stanowiska << std::endl;
-            std::cout << "----------------------------------------\n" << std::endl;
+            sprintf(bufor, "[RAPORT GODZINOWY %02d:00]\n", zegar->godzina);
+            ss << bufor;
+            ss << " > Wszystkie procesy: " << wszystkie_procesy << "\n";
+            ss << " > Personel (staly):  " << LICZBA_PERSONELU << "\n";
+            ss << " > AKTYWNI KLIENCI:   " << zegar->liczba_klientow << "\n";
+            ss << " > Otwarte stanowiska: " << zegar->otwarte_stanowiska << "\n";
+            ss << "----------------------------------------\n";
+
+            std::string gotowy_raport = ss.str();
+
+            // Raport godzinowy konsola
+            std::cout << gotowy_raport << std::endl;
+
+            // Zapis
+            std::ofstream plik(PLIK_RAPORTU, std::ios::app);
+            if (plik.is_open()) {
+                plik << gotowy_raport << std::endl;
+                plik.close();
+            }
         }
 
         if (zegar->godzina == SERWIS_OTWARCIE && zegar->minuta == 0) {
@@ -257,7 +272,7 @@ int main() {
                 }
             }
             else {
-                //log("SYSTEM", "Maksymalna liczba klientow osiagnieta. Czekam na zwolnienie miejsc.");
+                //Max liczba klientów
             }
         }
         else {
@@ -268,7 +283,7 @@ int main() {
                 }
             }
             else {
-                //log("SYSTEM", "Maksymalna liczba klientow osiagnieta. Czekam na zwolnienie miejsc.");
+                //Max liczba klientów
             }
         }
 
