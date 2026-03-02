@@ -77,14 +77,18 @@ void inicjalizacja() {
     if (semid == -1) { perror("Blad semget"); exit(1); }
 
     semctl(semid, SEM_LIMIT_KLIENTOW, SETVAL, MAX_KLIENTOW_W_KOLEJCE_MSG);
+    if (semctl(semid, SEM_BUDZIK_2, SETVAL, 0) == -1) perror("Błąd zerowania BUDZIK_2");
+    if (semctl(semid, SEM_BUDZIK_3, SETVAL, 0) == -1) perror("Błąd zerowania BUDZIK_3");
 
-    semctl(semid, SEM_PRACOWNICY, SETVAL, 3);         // 3 pracownikow
-    semctl(semid, SEM_KASA, SETVAL, 1);               // 1 osoba przy kasie
-    semctl(semid, SEM_WARSZTAT_OGOLNY, SETVAL, 7);    // 3 stanowiska ogólne
-    semctl(semid, SEM_WARSZTAT_SPECJALNY, SETVAL, 1); // 1 stanowisko specjalne
-    semctl(semid, SEM_ALARM, SETVAL, 1);              // Brama nocna zamknięta
-    semctl(semid, 5, SETVAL, 1);                      // Mutex logowania
-    semctl(semid, SEM_DZWONEK, SETVAL, 0);            // Dzwonek dla pracownika
+    semctl(semid, SEM_PRACOWNICY, SETVAL, 1);           // 1-3 pracownikow
+    semctl(semid, SEM_KASA, SETVAL, 1);                 // 1 osoba przy kasie
+    semctl(semid, SEM_WARSZTAT_OGOLNY, SETVAL, 7);      // 3 stanowiska ogólne
+    semctl(semid, SEM_WARSZTAT_SPECJALNY, SETVAL, 1);   // 1 stanowisko specjalne
+    semctl(semid, SEM_ALARM, SETVAL, 1);                // Brama nocna zamknięta
+    semctl(semid, 5, SETVAL, 1);                        // Mutex logowania
+    semctl(semid, SEM_DZWONEK, SETVAL, 0);              // Dzwonek dla pracownika
+    semctl(semid, SEM_BUDZIK_2, SETVAL, 0);             // Pracownik 2 - stanowisko
+    semctl(semid, SEM_BUDZIK_3, SETVAL, 0);             // Pracownik 3 - stanowisko
 
     // 2. Kolejki
     msgid_klient = msgget(MSG_KEY_KLIENT, IPC_CREAT | 0600);
@@ -103,6 +107,8 @@ void inicjalizacja() {
     zegar->godzina = 6;
     zegar->minuta = 0;
     zegar->czy_otwarte = false;
+    zegar->otwarte_stanowiska = 1;
+    zegar->liczba_klientow = 0;
 
     // 4. Pamięć - Usługi (Wczytanie z pliku)
     shmid_uslugi = shmget(pobierz_klucz(ID_USLUGI), sizeof(Usluga) * MAX_USLUG, IPC_CREAT | 0600);
@@ -129,7 +135,7 @@ int main() {
 
     log("MAIN", "--- SYMULACJA SERWISU SAMOCHODOWEGO ---");
 
-    // Kasjier i 3 pracownikow
+    // Kasjer i 3 pracownikow
     uruchom_program("./kasjer", "kasjer", "1");
     for (int i = 1; i <= 3; i++) {
         uruchom_program("./pracownik", "pracownik", std::to_string(i));
@@ -148,6 +154,45 @@ int main() {
     const int PREDKOSC_SYMULACJI = 100000;
     while (1) {
         zegar->minuta++;
+
+        int aktualni = (int)procesy_potomne.size() - LICZBA_PERSONELU; //
+        zegar->liczba_klientow = (aktualni < 0) ? 0 : aktualni;
+
+        // Otwieranie stanowisk
+        if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
+            V(semid, SEM_PRACOWNICY);
+            V(semid, SEM_BUDZIK_2);
+            zegar->otwarte_stanowiska = 2;
+            log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 2. stanowisko obslugi!");
+        }
+        else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow > K2) {
+            V(semid, SEM_PRACOWNICY);
+            V(semid, SEM_BUDZIK_3);
+            zegar->otwarte_stanowiska = 3;
+            log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 3. stanowisko obslugi!");
+        }
+
+        // Zamykanie stanowisk
+        if (zegar->otwarte_stanowiska == 3 && zegar->liczba_klientow <= 3) {
+            struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
+            if (semop(semid, op, 1) != -1) {
+                struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_3; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
+                semop(semid, op_budzik, 1);
+
+                zegar->otwarte_stanowiska = 2;
+                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Zamykam 3. stanowisko.");
+            }
+        }
+        else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow <= 2) {
+            struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
+            if (semop(semid, op, 1) != -1) {
+                struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_2; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
+                semop(semid, op_budzik, 1);
+
+                zegar->otwarte_stanowiska = 1;
+                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Zamykam 2. stanowisko.");
+            }
+        }
 
         if (zegar->minuta >= 60) {
             zegar->minuta = 0;
@@ -174,7 +219,8 @@ int main() {
             std::cout << bufor << std::endl;
             std::cout << " > Wszystkie procesy: " << wszystkie_procesy << std::endl;
             std::cout << " > Personel (staly):  " << LICZBA_PERSONELU << std::endl;
-            std::cout << " > AKTYWNI KLIENCI:   " << liczba_klientow << std::endl;
+            std::cout << " > AKTYWNI KLIENCI:   " << zegar->liczba_klientow << std::endl;
+            std::cout << " > Otwarte stanowiska:   " << zegar->otwarte_stanowiska << std::endl;
             std::cout << "----------------------------------------\n" << std::endl;
         }
 
@@ -204,7 +250,7 @@ int main() {
         if (zegar->czy_otwarte) {
             if (procesy_potomne.size() < MAX_KLIENTOW) {
                 // 40% szans co 10 minut symulowanych - w dzien
-                if ((rand() % 100) < 40) {
+                if ((rand() % 100) < 10) {
                     uruchom_program("./klient", "klient");
                 }
             }
@@ -215,7 +261,7 @@ int main() {
         else {
             if (procesy_potomne.size() < MAX_KLIENTOW) {
                 //  10% szans - w nocy
-                if ((rand() % 100) < 10) {
+                if ((rand() % 100) < 2) {
                     uruchom_program("./klient", "klient");
                 }
             }
@@ -235,14 +281,6 @@ int main() {
                 log("SYSTEM", "Klient (PID: " + std::to_string(zakonczony_pid) + ") zakonczyl symulacje.");
             }
         }
-
-        //printf("\r[DZIEN: %d] Godzina: %02d:%02d | Status: %s | (Ctrl+C aby zakonczyc)",
-            //zegar->dzien,
-            //zegar->godzina,
-            //zegar->minuta,
-            //zegar->czy_otwarte ? "OTWARTE " : "ZAMKNIETE");
-
-        //fflush(stdout);
 
         usleep(PREDKOSC_SYMULACJI);
     }

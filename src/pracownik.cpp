@@ -178,6 +178,17 @@ int main(int argc, char* argv[]) {
 
     while (true) {
 
+        // stanowiska 2 i 3
+        if (id_pracownika == 2) {
+            P(semid, SEM_BUDZIK_2);
+            V(semid, SEM_BUDZIK_2);
+        }
+        else if (id_pracownika == 3) {
+            P(semid, SEM_BUDZIK_3);
+            V(semid, SEM_BUDZIK_3);
+        }
+
+        // sygnal ze klient przyszedl
         P(semid, SEM_DZWONEK);
 
         // 1. Priorytet: Mechanik

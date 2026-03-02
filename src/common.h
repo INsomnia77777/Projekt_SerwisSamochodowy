@@ -26,7 +26,7 @@
 #define ID_MSG_KLIENT   'Q' // Kolejka Pracownik - Klient
 #define ID_MSG_MECHANIK 'M' // Kolejka Pracownik - Mechanik
 #define ID_MSG_KASJER   'K' // Kolejka Pracownik - Kasjer
-#define ID_ZEGAR     'Z'
+#define ID_ZEGAR     'X'
 #define ID_USLUGI    'U'
 
 // Generowanie klucza ftok
@@ -48,11 +48,12 @@ inline key_t pobierz_klucz(char id_projektu) {
 
 // LIMITY I STA£E
 #define T1 60             // Decyzja dla klienta o czekaniu kiedy serwis nieczynny
-#define LICZBA_SEM 8
+#define LICZBA_SEM 10
 #define MAX_USLUG 30
 #define MAX_USTER_W_AUCIE 5
 #define MAX_KLIENTOW 100
 #define MAX_KLIENTOW_W_KOLEJCE_MSG 20
+const int LICZBA_PERSONELU = 12;
 
 const int K1 = 3;
 const int K2 = 5;
@@ -75,7 +76,9 @@ enum SemIndex {
     SEM_WARSZTAT_SPECJALNY = 3, // Stanowisko mech 8 (wartosc pocz. 1 - tylko U i Y)
     SEM_KASA = 4,               // Kolejka do kasy (wartosc pocz. 1)
     SEM_LIMIT_KLIENTOW = 6,
-    SEM_DZWONEK = 7
+    SEM_DZWONEK = 7,
+    SEM_BUDZIK_2 = 8,           // otwarcie/ zamkniecie - stanowisko 2
+    SEM_BUDZIK_3 = 9            // otwarcie/ zamkniecie - stanowisko 3
 };
 
 // PRIORYTETY WIADOMOŒCI
@@ -105,7 +108,8 @@ struct StanZegara {
     int godzina;
     int minuta;
     bool czy_otwarte;
-    //trzeba bedzie dodac liczby otwartych stanowisk ale to po semaforach
+    int otwarte_stanowiska;
+    int liczba_klientow;
 };
 
 // 2. Kolejka komunikatow
