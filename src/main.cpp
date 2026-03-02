@@ -13,6 +13,7 @@ int msgid_kasjer = -1;
 int shmid_zegar = -1;
 int shmid_uslugi = -1;
 std::vector<pid_t> procesy_potomne;
+bool pozar_trwa = false;
 
 StanZegara* zegar = nullptr;
 Usluga* cennik = nullptr;
@@ -115,6 +116,7 @@ void inicjalizacja() {
     zegar->czy_otwarte = false;
     zegar->otwarte_stanowiska = 1;
     zegar->liczba_klientow = 0;
+    zegar->pid_main = getpid();
 
     // 4. Pamięć - Usługi (Wczytanie z pliku)
     shmid_uslugi = shmget(pobierz_klucz(ID_USLUGI), sizeof(Usluga) * MAX_USLUG, IPC_CREAT | 0600);
@@ -122,6 +124,15 @@ void inicjalizacja() {
     wczytaj_uslugi(cennik);
 
     log("ZEGAR", "Zasoby zainicjalizowane.");
+}
+
+// --- ZATRUDNIANIE EKIPY ---
+void personel() {
+    uruchom_program("./kasjer", "kasjer", "1");
+    for (int i = 1; i <= 3; i++) uruchom_program("./pracownik", "pracownik", std::to_string(i));
+    for (int i = 1; i <= 7; i++) uruchom_program("./mechanik", "mechanik", std::to_string(i));
+    uruchom_program("./mechanik", "mechanik", "8");
+    log("MAIN", "Personel jest na stanowiskach.");
 }
 
 void blad_krytyczny(int wynik, const char* komunikat) {
@@ -132,26 +143,35 @@ void blad_krytyczny(int wynik, const char* komunikat) {
     }
 }
 
+// OBSŁUGA SYGNAŁÓW
+
+//Sygnał4 - pożar
+void alarm_pozarowy(int sig) {
+    pozar_trwa = true;
+    log("MAIN", "Odebrano sygnal ewakuacji od Kierownika! Przekazuje sygnal 4 do personelu i klientow!");
+
+    if (zegar != nullptr) {
+        zegar->czy_otwarte = false;
+    }
+    if (semid != -1) {
+        semctl(semid, SEM_ALARM, SETVAL, 1);
+    }
+
+    for (pid_t pid : procesy_potomne) {
+        kill(pid, 4);
+    }
+}
+
 int main() {
 
-    //WCZYTYWANIE ZASOBOW
-
     signal(SIGINT, koniec);
+    signal(4, alarm_pozarowy);
+
     inicjalizacja();
 
     log("MAIN", "--- SYMULACJA SERWISU SAMOCHODOWEGO ---");
 
-    // Kasjer i 3 pracownikow
-    uruchom_program("./kasjer", "kasjer", "1");
-    for (int i = 1; i <= 3; i++) {
-        uruchom_program("./pracownik", "pracownik", std::to_string(i));
-    }
-
-    // Mechanicy (7 zwykłych, 1 specjalista nr 8)
-    for (int i = 1; i <= 7; i++) {
-        uruchom_program("./mechanik", "mechanik", std::to_string(i));
-    }
-    uruchom_program("./mechanik", "mechanik", "8");
+    personel();
 
     log("MAIN", "Poprawnie utworzono zasoby potrzbne do przeprowadzenia symulacji.");
 
@@ -164,19 +184,21 @@ int main() {
         int aktualni = (int)procesy_potomne.size() - LICZBA_PERSONELU; //
         zegar->liczba_klientow = (aktualni < 0) ? 0 : aktualni;
 
-        if (zegar->czy_otwarte) {
-            // Otwieranie stanowisk
-            if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
-                V(semid, SEM_PRACOWNICY);
-                V(semid, SEM_BUDZIK_2);
-                zegar->otwarte_stanowiska = 2;
-                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 2. stanowisko obslugi!");
-            }
-            else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow > K2) {
-                V(semid, SEM_PRACOWNICY);
-                V(semid, SEM_BUDZIK_3);
-                zegar->otwarte_stanowiska = 3;
-                log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 3. stanowisko obslugi!");
+        if (!pozar_trwa) {
+            if (zegar->czy_otwarte) {
+                // Otwieranie stanowisk
+                if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
+                    V(semid, SEM_PRACOWNICY);
+                    V(semid, SEM_BUDZIK_2);
+                    zegar->otwarte_stanowiska = 2;
+                    log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 2. stanowisko obslugi!");
+                }
+                else if (zegar->otwarte_stanowiska == 2 && zegar->liczba_klientow > K2) {
+                    V(semid, SEM_PRACOWNICY);
+                    V(semid, SEM_BUDZIK_3);
+                    zegar->otwarte_stanowiska = 3;
+                    log("STANOWISKA", "Kolejka: " + std::to_string(zegar->liczba_klientow) + " os. -> Otwieram 3. stanowisko obslugi!");
+                }
             }
         }
 
@@ -210,6 +232,34 @@ int main() {
         if (zegar->godzina >= 24) {
             zegar->godzina = 0;
             zegar->dzien++;
+
+            if (pozar_trwa) {
+                pozar_trwa = false;
+                log("MAIN", "Nowy dzien. Pozar ugaszono!");
+
+                // 1. Reset semaforów
+                semctl(semid, SEM_LIMIT_KLIENTOW, SETVAL, MAX_KLIENTOW_W_KOLEJCE_MSG);
+                semctl(semid, SEM_PRACOWNICY, SETVAL, 1);
+                semctl(semid, SEM_KASA, SETVAL, 1);
+                semctl(semid, SEM_WARSZTAT_OGOLNY, SETVAL, 7);
+                semctl(semid, SEM_WARSZTAT_SPECJALNY, SETVAL, 1);
+                semctl(semid, SEM_ALARM, SETVAL, 1);
+                semctl(semid, SEM_DZWONEK, SETVAL, 0);
+                semctl(semid, SEM_BUDZIK_2, SETVAL, 0);
+                semctl(semid, SEM_BUDZIK_3, SETVAL, 0);
+
+                // 2. Reset kolejek
+                msgctl(msgid_klient, IPC_RMID, NULL);
+                msgctl(msgid_mechanik, IPC_RMID, NULL);
+                msgctl(msgid_kasjer, IPC_RMID, NULL);
+
+                msgid_klient = msgget(MSG_KEY_KLIENT, IPC_CREAT | 0600);
+                msgid_mechanik = msgget(MSG_KEY_MECHANIK, IPC_CREAT | 0600);
+                msgid_kasjer = msgget(MSG_KEY_KASJER, IPC_CREAT | 0600);
+
+                // 3. procownicy
+                personel();
+            }
         }
 
         if (zegar->minuta == 0) {

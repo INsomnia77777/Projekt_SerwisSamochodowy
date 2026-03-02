@@ -124,10 +124,23 @@ bool czy_krytyczna_lokalnie(Wiadomosc* msg) {
     return false;
 }
 
+// OBS£UGA SYGNA£ÓW
+
+// Sygna³4 - po¿ar
+void ewakuacja(int sig) {
+    log(identyfikator, "ALARM! Rzucam wszystko i uciekam z budynku!");
+    if (zegar != nullptr) shmdt(zegar);
+    if (cennik != nullptr) shmdt(cennik);
+
+    exit(0);
+}
+
 int main() {
     srand(getpid() + time(NULL));
     identyfikator = "KLIENT " + std::to_string(getpid());
     podlacz_zasoby();
+
+    signal(4, ewakuacja);
 
     Wiadomosc msg;
     generuj_usterki(&msg);

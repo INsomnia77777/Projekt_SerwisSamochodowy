@@ -128,7 +128,7 @@ void obsluz_mechanika(Wiadomosc msg) {
     else {
         // Dodatkowe usterki
         pid_t id_mechanika = msg.nadawca_pid;
-        log(identyfikator, "Mechanik" + std::to_string(msg.id_mechanika) + " zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
+        log(identyfikator, "Mechanik " + std::to_string(msg.id_mechanika) + " zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
 
         msg.mtype = msg.id_klienta;
         msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
@@ -157,6 +157,17 @@ void obsluz_kasjera(Wiadomosc msg) {
     msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
 }
 
+// OBS£UGA SYGNA£ÓW
+
+// Sygna³4 - po¿ar
+void ewakuacja(int sig) {
+    log(identyfikator, "ALARM! Rzucam wszystko i uciekam z budynku!");
+    if (zegar != nullptr) shmdt(zegar);
+    if (cennik != nullptr) shmdt(cennik);
+
+    exit(0);
+}
+
 int main(int argc, char* argv[]) {
     int id_pracownika;
 
@@ -171,6 +182,7 @@ int main(int argc, char* argv[]) {
     identyfikator = "PRACOWNIK " + std::to_string(id_pracownika);
 
     podlacz_zasoby();
+    signal(4, ewakuacja);
 
     log(identyfikator, "Rozpoczynam zmiane.");
 

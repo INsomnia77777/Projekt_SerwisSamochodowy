@@ -59,6 +59,17 @@ void symuluj_prace(int jednostki_czasu) {
     usleep(jednostki_czasu * przelicznik);
 }
 
+// OBS£UGA SYGNA£ÓW
+
+// Sygna³4 - po¿ar
+void ewakuacja(int sig) {
+    log(identyfikator, "ALARM! Rzucam wszystko i uciekam z budynku!");
+    if (zegar != nullptr) shmdt(zegar);
+    if (cennik != nullptr) shmdt(cennik);
+
+    exit(0);
+}
+
 int main(int argc, char* argv[]) {
     if (argc > 1) {
         id_mechanika = std::stoi(argv[1]);
@@ -70,6 +81,7 @@ int main(int argc, char* argv[]) {
     srand(getpid());
     identyfikator = "MECHANIK " + std::to_string(id_mechanika);
     podlacz_zasoby();
+    signal(4, ewakuacja);
 
     log(identyfikator, "Gotowy do pracy.");
 

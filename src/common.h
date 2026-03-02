@@ -110,6 +110,7 @@ struct StanZegara {
     bool czy_otwarte;
     int otwarte_stanowiska;
     int liczba_klientow;
+    pid_t pid_main;
 };
 
 // 2. Kolejka komunikatow
