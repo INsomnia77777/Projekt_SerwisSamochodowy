@@ -13,7 +13,6 @@ int msgid_kasjer = -1;
 int shmid_zegar = -1;
 int shmid_uslugi = -1;
 std::vector<pid_t> procesy_potomne;
-bool pozar_trwa = false;
 
 StanZegara* zegar = nullptr;
 Usluga* cennik = nullptr;
@@ -117,6 +116,7 @@ void inicjalizacja() {
     zegar->otwarte_stanowiska = 1;
     zegar->liczba_klientow = 0;
     zegar->pid_main = getpid();
+    zegar->pozar_trwa = false;
 
     // 4. Pamięć - Usługi (Wczytanie z pliku)
     shmid_uslugi = shmget(pobierz_klucz(ID_USLUGI), sizeof(Usluga) * MAX_USLUG, IPC_CREAT | 0600);
@@ -147,7 +147,7 @@ void blad_krytyczny(int wynik, const char* komunikat) {
 
 //Sygnał4 - pożar
 void alarm_pozarowy(int sig) {
-    pozar_trwa = true;
+    zegar->pozar_trwa = true;
     log("MAIN", "Odebrano sygnal ewakuacji od Kierownika! Przekazuje sygnal 4 do personelu i klientow!");
 
     if (zegar != nullptr) {
@@ -184,7 +184,7 @@ int main() {
         int aktualni = (int)procesy_potomne.size() - LICZBA_PERSONELU; //
         zegar->liczba_klientow = (aktualni < 0) ? 0 : aktualni;
 
-        if (!pozar_trwa) {
+        if (!zegar->pozar_trwa) {
             if (zegar->czy_otwarte) {
                 // Otwieranie stanowisk
                 if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
@@ -233,8 +233,8 @@ int main() {
             zegar->godzina = 0;
             zegar->dzien++;
 
-            if (pozar_trwa) {
-                pozar_trwa = false;
+            if (zegar->pozar_trwa) {
+                zegar->pozar_trwa = false;
                 log("MAIN", "Nowy dzien. Pozar ugaszono!");
 
                 // 1. Reset semaforów

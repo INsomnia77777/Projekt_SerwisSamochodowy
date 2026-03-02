@@ -15,11 +15,34 @@ void podlacz_zasoby() {
     zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 }
 
-int main() {
-    podlacz_zasoby();
-    log("KIEROWNIK", "POZAR! Oglaszam ewakulacje!");
+// SYGNA£Y
+
+void sygnal4_pozar() {
+    log("KIEROWNIK", "POZAR ! Oglaszam natychmiastowa ewakuacje serwisu!");
+
     if (kill(zegar->pid_main, 4) == -1) {
-        perror("KIEROWNIK: Blad wysylania sygnalu");
+        perror("KIEROWNIK: Blad wysylania sygnalu 4");
+    }
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 2) {
+        std::cerr << "Uzycie: " << argv[0] << " <numer_sygnalu>\n";
+        std::cerr << "Dostepne komendy:\n";
+        std::cerr << "  4 - Pozar (Natychmiastowa ewakuacja)\n";
+        return 1;
+    }
+    int typ_alarmu = std::stoi(argv[1]);
+    podlacz_zasoby();
+    
+    switch (typ_alarmu) {
+    case 4:
+        sygnal4_pozar();
+        break;
+
+    default:
+        std::cout << "[KIEROWNIK] Nieznany kod sygnalu: " << typ_alarmu << ".\n";
+        break;
     }
 
     shmdt(zegar);

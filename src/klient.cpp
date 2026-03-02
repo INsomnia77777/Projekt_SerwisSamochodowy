@@ -140,6 +140,13 @@ int main() {
     identyfikator = "KLIENT " + std::to_string(getpid());
     podlacz_zasoby();
 
+    if (zegar->pozar_trwa) {
+        log(identyfikator, "Serwis zamkniety z powodu pozaru. Odjezdzam.");
+        shmdt(zegar);
+        shmdt(cennik);
+        return 0;
+    }
+
     signal(4, ewakuacja);
 
     Wiadomosc msg;
