@@ -130,9 +130,9 @@ int main() {
     log("MAIN", "--- SYMULACJA SERWISU SAMOCHODOWEGO ---");
 
     // Kasjier i 3 pracownikow
-    uruchom_program("./kasjer", "kasjer");
-    for (int i = 0; i < 3; i++) {
-        uruchom_program("./pracownik", "pracownik");
+    uruchom_program("./kasjer", "kasjer", "1");
+    for (int i = 1; i <= 3; i++) {
+        uruchom_program("./pracownik", "pracownik", std::to_string(i));
     }
 
     // Mechanicy (7 zwykłych, 1 specjalista nr 8)

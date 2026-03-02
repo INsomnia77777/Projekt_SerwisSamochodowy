@@ -95,11 +95,11 @@ bool czekaj_na_otwarcie(Wiadomosc* msg) {
     bool zostaje = false;
 
     if (krytyczna) {
-        log(identyfikator, "Serwis zamkniety (KRYTYCZNA). Czekam na otwarcie bramy (blokada).");
+        log(identyfikator, "Serwis zamkniety (KRYTYCZNA). Czekam.");
         zostaje = true;
     }
     else if (diff <= T1) {
-        log(identyfikator, "Serwis zamkniety (otwarcie za " + std::to_string(diff) + " min). Czekam (blokada).");
+        log(identyfikator, "Serwis zamkniety (otwarcie za " + std::to_string(diff) + " min). Czekam.");
         zostaje = true;
     }
     else {
@@ -110,7 +110,7 @@ bool czekaj_na_otwarcie(Wiadomosc* msg) {
     if (zostaje) {
         P(semid, SEM_ALARM);
 
-        log(identyfikator, "Otwarto serwis. Wchodze");
+        log(identyfikator, "Otwarto serwis. Wchodze.");
         return true;
     }
 
@@ -141,7 +141,7 @@ int main() {
                 return 0;
             }
         }
-        log(identyfikator, "Serwis zamkniety. Czekam na otwarcie (przed brama)...");
+        log(identyfikator, "Serwis zamkniety. Czekam na otwarcie...");
     }
 
     bramka_serwisu(semid);

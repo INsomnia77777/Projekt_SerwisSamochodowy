@@ -113,6 +113,7 @@ struct Wiadomosc {
     long mtype;
     pid_t nadawca_pid;
     int id_klienta;
+    int id_mechanika;
     char marka_auta;
     int id_uslugi[MAX_USTER_W_AUCIE];
     int liczba_usterek;

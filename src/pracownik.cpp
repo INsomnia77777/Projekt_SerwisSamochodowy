@@ -89,7 +89,8 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
     wycen_naprawe(&msg);
 
     log(identyfikator, "Przyjmuje zgloszenie od Klienta " + std::to_string(msg.id_klienta) +
-        ". Cena: " + std::to_string(msg.cena_total) +
+        ". Marka: " + std::to_string(msg.marka_auta) +
+        ", Cena: " + std::to_string(msg.cena_total) +
         ", Czas: " + std::to_string(msg.czas_total));
 
     msg.mtype = msg.id_klienta;
@@ -119,7 +120,7 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
 void obsluz_mechanika(Wiadomosc msg) {
     if (msg.czy_gotowe) {
         // Naprawa bez dodatkowych usterek
-        log(identyfikator, "Mechanik skonczyl auto Klienta " + std::to_string(msg.id_klienta) + ". Wysylam informacje do Klienta.");
+        log(identyfikator, "Mechanik" + std::to_string(msg.id_mechanika) + " skonczyl auto Klienta " + std::to_string(msg.id_klienta) + ". Wysylam informacje do Klienta.");
 
         msg.mtype = msg.id_klienta;
         msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
@@ -127,7 +128,7 @@ void obsluz_mechanika(Wiadomosc msg) {
     else {
         // Dodatkowe usterki
         pid_t id_mechanika = msg.nadawca_pid;
-        log(identyfikator, "Mechanik zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
+        log(identyfikator, "Mechanik" + std::to_string(msg.id_mechanika) + " zglasza dodatkowa usterke u Klienta " + std::to_string(msg.id_klienta) + ". Pytam o zgode.");
 
         msg.mtype = msg.id_klienta;
         msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
@@ -136,10 +137,10 @@ void obsluz_mechanika(Wiadomosc msg) {
         msgrcv(msgid_klient, &odp, sizeof(Wiadomosc) - sizeof(long), msg.id_klienta, 0);
 
         if (odp.czy_zaakceptowano) {
-            log(identyfikator, "Klient ZGODZIL SIE na dodatkowa naprawe. Przekazuje mechanikowi.");
+            log(identyfikator, "Klient" + std::to_string(msg.id_klienta) + " ZGODZIL SIE na dodatkowa naprawe. Przekazuje mechanikowi.");
         }
         else {
-            log(identyfikator, "Klient ODMOWIL dodatkowej naprawy. Przekazuje mechanikowi.");
+            log(identyfikator, "Klient" + std::to_string(msg.id_klienta) + " ODMOWIL dodatkowej naprawy. Przekazuje mechanikowi.");
         }
 
         odp.mtype = id_mechanika;
@@ -156,9 +157,19 @@ void obsluz_kasjera(Wiadomosc msg) {
     msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    int id_pracownika;
+
+    if (argc > 1) {
+        id_pracownika = std::stoi(argv[1]);
+    }
+    else {
+        id_pracownika = getpid();
+    }
+
     srand(getpid());
-    identyfikator = "PRACOWNIK " + std::to_string(getpid());
+    identyfikator = "PRACOWNIK " + std::to_string(id_pracownika);
+
     podlacz_zasoby();
 
     log(identyfikator, "Rozpoczynam zmiane.");

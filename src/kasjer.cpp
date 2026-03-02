@@ -25,9 +25,19 @@ void podlacz_zasoby() {
     zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    int id_kasjera;
+
+    if (argc > 1) {
+        id_kasjera = std::stoi(argv[1]);
+    }
+    else {
+        id_kasjera = getpid();
+    }
+
     srand(getpid());
-    identyfikator = "KASJER " + std::to_string(getpid());
+    identyfikator = "KASJER " + std::to_string(id_kasjera);
+
     podlacz_zasoby();
 
     log(identyfikator, "Otwieram kase. Czekam na klientow.");
@@ -56,7 +66,7 @@ int main() {
         }
         else {
             V(semid, SEM_DZWONEK);
-            log(identyfikator, "Zaksiegowano wplate. Wyslalem info do Pracownika.");
+            log(identyfikator, "Zaksiegowano wplate Klienta " + std::to_string(msg.id_klienta) + ". Wyslalem info do Pracownika.");
         }
     }
 

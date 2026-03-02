@@ -117,13 +117,14 @@ int main(int argc, char* argv[]) {
             msg.cena_total += cena_nowej;
 
             msg.nadawca_pid = getpid();
+            msg.id_mechanika = id_mechanika;
             msg.czy_gotowe = false;
             msg.mtype = MSG_OD_MECHANIKA;
             msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
             V(semid, SEM_DZWONEK);
 
             // Czekamy na decyzjê
-            log(identyfikator, "Czekam na decyzje klienta...");
+            log(identyfikator, "Czekam na decyzje Klienta " + std::to_string(msg.id_klienta) + "...");
             msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0);
 
             if (msg.czy_zaakceptowano) {
@@ -132,21 +133,21 @@ int main(int argc, char* argv[]) {
 
                 if (czy_wydluzyc) {
                     msg.czas_total += czas_nowej;
-                    log(identyfikator, "Klient sie zgodzil. Naprawa wydluzy sie o " + std::to_string(czas_nowej));
+                    log(identyfikator, "Klient " + std::to_string(msg.id_klienta) + " zgodzil sie. Naprawa wydluzy sie o " + std::to_string(czas_nowej));
                     symuluj_prace(czas_nowej);
                 }
                 else {
-                    log(identyfikator, "Klient sie zgodzil. Udalo sie naprawic bez wydluzania czasu!");
+                    log(identyfikator, "Klient " + std::to_string(msg.id_klienta) + " zgodzil sie. Udalo sie naprawic bez wydluzania czasu!");
                 }
             }
             else {
-                log(identyfikator, "Klient ODMOWIL. Koncze pierwotna naprawe.");
+                log(identyfikator, "Klient " + std::to_string(msg.id_klienta) + " ODMOWIL. Koncze pierwotna naprawe.");
                 msg.cena_total -= cena_nowej;
             }
         }
 
         // Koniec naprawy
-        log(identyfikator, "Naprawa zakonczona. Zwalniam stanowisko.");
+        log(identyfikator, "Naprawa dla Klienta " + std::to_string(msg.id_klienta) + " zakonczona. Zwalniam stanowisko.");
 
         if (msg.marka_auta == 'U' || msg.marka_auta == 'Y') {
             if (id_mechanika == 8) V(semid, SEM_WARSZTAT_SPECJALNY);
@@ -157,6 +158,7 @@ int main(int argc, char* argv[]) {
         }
 
         // --- TERAZ ZG£ASZAMY KONIEC ---
+        msg.id_mechanika = id_mechanika;
         msg.czy_gotowe = true;
         msg.mtype = MSG_OD_MECHANIKA;
         msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
