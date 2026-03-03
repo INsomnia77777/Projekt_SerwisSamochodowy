@@ -55,7 +55,7 @@ int oblicz_czas_naprawy(Wiadomosc* msg) {
     return czas_total;
 }
 
-//!!! - Wydaje mi siê ¿e tu siê odbywa BUSY WAITING - trzeba to bêdzie ogarn¹æ (zmienna, sygna³, czy coœ w ten desñ)
+//ew mo¿na to poprawiæ na wektor z czasami zakoñczenia w pamiêci dzielonej do którego bêdzie przydzielony budzik, który bêdzie panowaæ nad tym haosem
 void symuluj_prace(int jednostki_czasu) {
     int aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
 
@@ -108,6 +108,27 @@ void sygnal2_przyspieszenie(int sig) {
     }
 }
 
+//Sygna³3 - przywrócenie normalnego tempa pracy
+void sygnal3_przywrocenie(int sig) {
+    if (mnoznik_czasu == 0.5) {
+        mnoznik_czasu = 1.0;
+        log(identyfikator, "Otrzymalem Sygnal 3! Odwolano przyspieszenie. Wracam do normalnego trybu.");
+
+        int aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
+        if (minuty_koniec_pracy > aktualne_minuty) {
+            int pozostalo = minuty_koniec_pracy - aktualne_minuty;
+
+            int nowe_pozostalo = pozostalo * 2;
+            minuty_koniec_pracy = aktualne_minuty + nowe_pozostalo;
+
+            log(identyfikator, "Wydluzono trwajaca naprawe z powrotem! Zostalo " + std::to_string(nowe_pozostalo) + " min.");
+        }
+    }
+    else {
+        log(identyfikator, "Otrzymalem Sygnal 3, ale pracuje w normalnym tempie.");
+    }
+}
+
 // Sygna³4 - po¿ar
 void ewakuacja(int sig) {
     log(identyfikator, "ALARM! Rzucam wszystko i uciekam z budynku!");
@@ -131,6 +152,7 @@ int main(int argc, char* argv[]) {
     signal(4, ewakuacja);
     signal(1, sygnal1_zamkniecie);
     signal(SIGUSR1, sygnal2_przyspieszenie);
+    signal(SIGUSR2, sygnal3_przywrocenie);
 
     log(identyfikator, "Gotowy do pracy. PID(" + std::to_string(getpid()) + ")");
 
@@ -241,11 +263,6 @@ int main(int argc, char* argv[]) {
         msg.mtype = MSG_OD_MECHANIKA;
         msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         V(semid, SEM_DZWONEK);
-
-        if (mnoznik_czasu != 1.0) {
-            mnoznik_czasu = 1.0;
-            log(identyfikator, "Koniec przyspieszenia. Wracam do normalnego tempa pracy.");
-        }
 
         if (zamykam_stanowisko) {
             shmdt(zegar);

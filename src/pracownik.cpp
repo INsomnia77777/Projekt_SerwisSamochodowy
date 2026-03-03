@@ -183,6 +183,7 @@ int main(int argc, char* argv[]) {
 
     podlacz_zasoby();
     signal(4, ewakuacja);
+    signal(SIGUSR2, SIG_IGN);
 
     log(identyfikator, "Rozpoczynam zmiane.");
 

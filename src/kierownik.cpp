@@ -31,6 +31,7 @@ int main(int argc, char* argv[]) {
         std::cerr << "Dostepne komendy:\n";
         std::cerr << "  1 - Zamknij stanowisko (Uzycie: ./kierownik 1 <PID_MECHANIKA>)\n";
         std::cerr << "  2 - Przyspiesz mechanika o 50% (Uzycie: ./kierownik 2 <PID_MECHANIKA>)\n";
+        std::cerr << "  3 - Przywroc normalne tempo (Uzycie: ./kierownik 3 <PID_MECHANIKA>)\n";
         std::cerr << "  4 - Pozar (Natychmiastowa ewakuacja)\n";
         return 1;
     }
@@ -64,6 +65,21 @@ int main(int argc, char* argv[]) {
 
             if (kill(pid_mechanika, SIGUSR1) == -1) {
                 perror("KIEROWNIK: Blad wysylania sygnalu 2 do mechanika");
+            }
+        }
+        break;
+
+    case 3:
+        if (argc < 3) {
+            std::cerr << "[BLAD] Zapomniales podac PID mechanika!\n";
+            std::cerr << "Przyklad: ./kierownik 3 12345\n";
+        }
+        else {
+            pid_t pid_mechanika = std::stoi(argv[2]);
+            std::cout << "[KIEROWNIK] Wysylam polecenie przywrocenia normalnego tempa do mechanika (PID: " << pid_mechanika << ").\n";
+
+            if (kill(pid_mechanika, SIGUSR2) == -1) {
+                perror("KIEROWNIK: Blad wysylania sygnalu 3 do mechanika");
             }
         }
         break;

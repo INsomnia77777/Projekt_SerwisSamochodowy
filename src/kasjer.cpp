@@ -39,6 +39,8 @@ int main(int argc, char* argv[]) {
     identyfikator = "KASJER " + std::to_string(id_kasjera);
 
     podlacz_zasoby();
+    signal(4, ewakuacja);
+    signal(SIGUSR2, SIG_IGN);
 
     log(identyfikator, "Otwieram kase. Czekam na klientow.");
 

@@ -233,6 +233,10 @@ int main() {
             zegar->godzina = 0;
             zegar->dzien++;
 
+            for (pid_t pid : procesy_potomne) {
+                kill(pid, SIGUSR2);
+            }
+
             if (zegar->pozar_trwa) {
                 zegar->pozar_trwa = false;
                 log("MAIN", "Nowy dzien. Pozar ugaszono!");

@@ -148,6 +148,7 @@ int main() {
     }
 
     signal(4, ewakuacja);
+    signal(SIGUSR2, SIG_IGN);
 
     Wiadomosc msg;
     generuj_usterki(&msg);
