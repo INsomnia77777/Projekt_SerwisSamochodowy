@@ -1,4 +1,4 @@
-﻿#include "common.h"
+﻿﻿#include "common.h"
 #include <iostream>
 #include <sys/wait.h>
 #include <vector>
@@ -41,9 +41,9 @@ void uruchom_program(const char* sciezka, const char* nazwa, std::string arg1 = 
 // Ctrl + C
 void koniec(int sig) {
     if (sig != 0) log("MAIN", "Otrzymano sygnal przerwania. Zwalniam zasoby...");
-        for (pid_t pid : procesy_potomne) {
-            kill(pid, SIGTERM);
-        }
+    for (pid_t pid : procesy_potomne) {
+        kill(pid, SIGTERM);
+    }
 
     while (wait(NULL) > 0);
     if (semid != -1) {
@@ -202,27 +202,27 @@ int main() {
             }
         }
 
-            // Zamykanie stanowisk
-            if (zegar->otwarte_stanowiska == 3 && (zegar->liczba_klientow <= 3 || !zegar->czy_otwarte)) {
-                struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
-                if (semop(semid, op, 1) != -1) {
-                    struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_3; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
-                    semop(semid, op_budzik, 1);
+        // Zamykanie stanowisk
+        if (zegar->otwarte_stanowiska == 3 && (zegar->liczba_klientow <= 3 || !zegar->czy_otwarte)) {
+            struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
+            if (semop(semid, op, 1) != -1) {
+                struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_3; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
+                semop(semid, op_budzik, 1);
 
-                    zegar->otwarte_stanowiska = 2;
-                    log("STANOWISKA", "Zamykam 3. stanowisko (Kolejka: " + std::to_string(zegar->liczba_klientow) + " os.");
-                }
+                zegar->otwarte_stanowiska = 2;
+                log("STANOWISKA", "Zamykam 3. stanowisko (Kolejka: " + std::to_string(zegar->liczba_klientow) + " os.");
             }
-            else if (zegar->otwarte_stanowiska == 2 && (zegar->liczba_klientow <= 2 || !zegar->czy_otwarte)) {
-                struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
-                if (semop(semid, op, 1) != -1) {
-                    struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_2; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
-                    semop(semid, op_budzik, 1);
+        }
+        else if (zegar->otwarte_stanowiska == 2 && (zegar->liczba_klientow <= 2 || !zegar->czy_otwarte)) {
+            struct sembuf op[1]; op[0].sem_num = SEM_PRACOWNICY; op[0].sem_op = -1; op[0].sem_flg = IPC_NOWAIT;
+            if (semop(semid, op, 1) != -1) {
+                struct sembuf op_budzik[1]; op_budzik[0].sem_num = SEM_BUDZIK_2; op_budzik[0].sem_op = -1; op_budzik[0].sem_flg = IPC_NOWAIT;
+                semop(semid, op_budzik, 1);
 
-                    zegar->otwarte_stanowiska = 1;
-                    log("STANOWISKA", "Zamykam 2. stanowisko (Kolejka: " + std::to_string(zegar->liczba_klientow) + " os.");
-                }
+                zegar->otwarte_stanowiska = 1;
+                log("STANOWISKA", "Zamykam 2. stanowisko (Kolejka: " + std::to_string(zegar->liczba_klientow) + " os.");
             }
+        }
 
         if (zegar->minuta >= 60) {
             zegar->minuta = 0;

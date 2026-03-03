@@ -79,7 +79,7 @@ void obsluz_nowego_klienta(Wiadomosc msg) {
 
         msg.mtype = msg.id_klienta;
         msg.czy_zaakceptowano = false;
-        msg.cena_total = -1; 
+        msg.cena_total = -1;
 
         msgsnd(msgid_klient, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         return;

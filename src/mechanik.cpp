@@ -12,6 +12,8 @@ int shmid_uslugi;
 std::string identyfikator;
 int id_mechanika = 0;
 bool zamykam_stanowisko = false;
+double mnoznik_czasu = 1.0;
+int minuty_koniec_pracy = 0;
 
 StanZegara* zegar;
 Usluga* cennik;
@@ -53,16 +55,23 @@ int oblicz_czas_naprawy(Wiadomosc* msg) {
     return czas_total;
 }
 
+//!!! - Wydaje mi siê ¿e tu siê odbywa BUSY WAITING - trzeba to bêdzie ogarn¹æ (zmienna, sygna³, czy coœ w ten desñ)
 void symuluj_prace(int jednostki_czasu) {
-    log(identyfikator, "Rozpoczynam naprawe... (Czas: " + std::to_string(jednostki_czasu) + " min symulowanych)");
+    int aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
 
-    int minuty_start = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
-    int minuty_koniec = minuty_start + jednostki_czasu;
+    if (minuty_koniec_pracy <= aktualne_minuty) {
+        minuty_koniec_pracy = aktualne_minuty;
+    }
+
+    int dodawany_czas = jednostki_czasu * mnoznik_czasu;
+    minuty_koniec_pracy += dodawany_czas;
+
+    log(identyfikator, "Rozpoczynam naprawe... (Koniec za " + std::to_string(dodawany_czas) + " min.)");
 
     while (true) {
-        int aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
+        aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
 
-        if (aktualne_minuty >= minuty_koniec) {
+        if (aktualne_minuty >= minuty_koniec_pracy) {
             break;
         }
 
@@ -76,6 +85,27 @@ void symuluj_prace(int jednostki_czasu) {
 void sygnal1_zamkniecie(int sig) {
     zamykam_stanowisko = true;
     log(identyfikator, "Odebralem rozkaz od Kierownika! Zamkne stanowisko jak tylko skoncze naprawe.");
+}
+
+//Sygna³2 - przyœpieszenie pracy jednorazowo o 50%
+void sygnal2_przyspieszenie(int sig) {
+    if (mnoznik_czasu == 1.0) {
+        mnoznik_czasu = 0.5;
+        log(identyfikator, "Otrzymalem Sygnal 2! Przyspieszam prace stanowiska o 50%.");
+
+        // jeœli mechanik jest w trakcie naprawy
+        int aktualne_minuty = (zegar->dzien * 1440) + (zegar->godzina * 60) + zegar->minuta;
+        if (minuty_koniec_pracy > aktualne_minuty) {
+            int pozostalo = minuty_koniec_pracy - aktualne_minuty;
+            int nowe_pozostalo = pozostalo * mnoznik_czasu;
+            minuty_koniec_pracy = aktualne_minuty + nowe_pozostalo;
+
+            log(identyfikator, "Skrocono trwajaca naprawe! Zostalo " + std::to_string(nowe_pozostalo) + " min.");
+        }
+    }
+    else {
+        log(identyfikator, "Otrzymalem Sygnal 2, ale juz pracuje w trybie przyspieszonym.");
+    }
 }
 
 // Sygna³4 - po¿ar
@@ -100,6 +130,7 @@ int main(int argc, char* argv[]) {
     podlacz_zasoby();
     signal(4, ewakuacja);
     signal(1, sygnal1_zamkniecie);
+    signal(SIGUSR1, sygnal2_przyspieszenie);
 
     log(identyfikator, "Gotowy do pracy. PID(" + std::to_string(getpid()) + ")");
 
@@ -171,7 +202,7 @@ int main(int argc, char* argv[]) {
             msgrcv(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), getpid(), 0);
 
             if (msg.czy_zaakceptowano) {
-                
+
                 bool czy_wydluzyc = (rand() % 100) < 60;
 
                 if (czy_wydluzyc) {
@@ -210,6 +241,11 @@ int main(int argc, char* argv[]) {
         msg.mtype = MSG_OD_MECHANIKA;
         msgsnd(msgid, &msg, sizeof(Wiadomosc) - sizeof(long), 0);
         V(semid, SEM_DZWONEK);
+
+        if (mnoznik_czasu != 1.0) {
+            mnoznik_czasu = 1.0;
+            log(identyfikator, "Koniec przyspieszenia. Wracam do normalnego tempa pracy.");
+        }
 
         if (zamykam_stanowisko) {
             shmdt(zegar);
