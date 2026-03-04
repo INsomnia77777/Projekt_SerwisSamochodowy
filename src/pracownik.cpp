@@ -64,6 +64,10 @@ void wycen_naprawe(Wiadomosc* msg) {
 
 void obsluz_nowego_klienta(Wiadomosc msg) {
 
+    P(semid, SEM_MUTEX);
+    zegar->liczba_obsluzonych++;
+    V(semid, SEM_MUTEX);
+
     // Sprawdzenie marki
     bool czy_obslugiwana = false;
     for (char m : MARKI_OBSLUGIWANE) {

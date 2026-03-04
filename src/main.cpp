@@ -14,6 +14,7 @@ int shmid_zegar = -1;
 int shmid_uslugi = -1;
 std::vector<pid_t> procesy_potomne;
 
+
 StanZegara* zegar = nullptr;
 Usluga* cennik = nullptr;
 
@@ -117,6 +118,7 @@ void inicjalizacja() {
     zegar->liczba_klientow = 0;
     zegar->pid_main = getpid();
     zegar->pozar_trwa = false;
+    zegar->liczba_obsluzonych = 0;
 
     // 4. Pamięć - Usługi (Wczytanie z pliku)
     shmid_uslugi = shmget(pobierz_klucz(ID_USLUGI), sizeof(Usluga) * MAX_USLUG, IPC_CREAT | 0600);
@@ -234,6 +236,7 @@ int main() {
         if (zegar->godzina >= 24) {
             zegar->godzina = 0;
             zegar->dzien++;
+            zegar->liczba_obsluzonych = 0;
 
             for (pid_t pid : procesy_potomne) {
                 kill(pid, SIGUSR2);
@@ -282,6 +285,7 @@ int main() {
             ss << " > Personel (aktywny):  " << aktualny_personel << "\n";
             ss << " > AKTYWNI KLIENCI:   " << zegar->liczba_klientow << "\n";
             ss << " > Otwarte stanowiska: " << zegar->otwarte_stanowiska << "\n";
+            ss << " > OBSLUZENI DZIS:     " << zegar->liczba_obsluzonych << "\n";
             ss << "----------------------------------------\n";
 
             std::string gotowy_raport = ss.str();
@@ -320,26 +324,17 @@ int main() {
             }
         }
 
+        //Generator klientów
         if (zegar->czy_otwarte) {
-            if (procesy_potomne.size() < MAX_KLIENTOW) {
-                // 40% szans co 10 minut symulowanych - w dzien
-                if ((rand() % 100) < 10) {
-                    uruchom_program("./klient", "klient");
-                }
-            }
-            else {
-                //Max liczba klientów
+            while (procesy_potomne.size() < MAX_KLIENTOW) {
+                uruchom_program("./klient", "klient");
             }
         }
         else {
             if (procesy_potomne.size() < MAX_KLIENTOW) {
-                //  10% szans - w nocy
                 if ((rand() % 100) < 2) {
                     uruchom_program("./klient", "klient");
                 }
-            }
-            else {
-                //Max liczba klientów
             }
         }
 
@@ -368,7 +363,7 @@ int main() {
                 else {
                     log("SYSTEM", "Klient zakonczyl symulacje.");
                 }
-                
+
             }
         }
 

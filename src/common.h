@@ -51,9 +51,8 @@ inline key_t pobierz_klucz(char id_projektu) {
 #define LICZBA_SEM 10
 #define MAX_USLUG 30
 #define MAX_USTER_W_AUCIE 5
-#define MAX_KLIENTOW 100
-#define MAX_KLIENTOW_W_KOLEJCE_MSG 20
-const int LICZBA_PERSONELU = 12;
+#define MAX_KLIENTOW 10000
+#define MAX_KLIENTOW_W_KOLEJCE_MSG 100
 
 const int K1 = 3;
 const int K2 = 5;
@@ -64,6 +63,8 @@ const int SERWIS_OTWARCIE = 8;
 const int SERWIS_ZAMKNIECIE = 18;
 const int JEDNOSTKA_CZASU_MS = 60000; // 60000 ms = 60 sekund czasu rzeczywistego, 1 min real= 1h symulacja
 const std::string MARKI_OBSLUGIWANE = "AEIOUY";
+const int LICZBA_PERSONELU = 12;
+const double SKALA_CZASU_USLUG = 1;
 
 // RAPORT SYMULACJI
 #define PLIK_RAPORTU "raport_symulacji.txt"
@@ -75,6 +76,7 @@ enum SemIndex {
     SEM_WARSZTAT_OGOLNY = 2,    // Stanowiska mech 1-7 (wartosc pocz. 7)
     SEM_WARSZTAT_SPECJALNY = 3, // Stanowisko mech 8 (wartosc pocz. 1 - tylko U i Y)
     SEM_KASA = 4,               // Kolejka do kasy (wartosc pocz. 1)
+    SEM_MUTEX = 5,              //licznie obs³u¿onych klientów
     SEM_LIMIT_KLIENTOW = 6,
     SEM_DZWONEK = 7,
     SEM_BUDZIK_2 = 8,           // otwarcie/ zamkniecie - stanowisko 2
@@ -114,6 +116,7 @@ struct StanZegara {
     bool pozar_trwa;
     pid_t pidy_mechanikow[9];
     int status_mechanikow[9];
+    int liczba_obsluzonych;
 };
 
 // 2. Kolejka komunikatow
@@ -199,7 +202,21 @@ inline void wczytaj_uslugi(Usluga* tablica) {
         std::getline(ss, segment, '\t'); tablica[i].id = std::stoi(segment);
         std::getline(ss, segment, '\t'); strncpy(tablica[i].nazwa, segment.c_str(), 63);
         std::getline(ss, segment, '\t'); tablica[i].cena = std::stoi(segment);
-        std::getline(ss, segment, '\t'); tablica[i].czas_bazowy = std::stoi(segment);
+
+        std::getline(ss, segment, '\t');
+        int wczytany_czas = std::stoi(segment);
+        if (SKALA_CZASU_USLUG != 1) {
+            int wczytany_czas = std::stoi(segment);
+
+            tablica[i].czas_bazowy = (int)(wczytany_czas * SKALA_CZASU_USLUG);
+
+            if (tablica[i].czas_bazowy < 1) {
+                tablica[i].czas_bazowy = 1;
+            }
+        }
+        else {
+            tablica[i].czas_bazowy = wczytany_czas;
+        }
 
         i++;
     }
