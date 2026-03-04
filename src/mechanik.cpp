@@ -149,6 +149,7 @@ int main(int argc, char* argv[]) {
     srand(getpid());
     identyfikator = "MECHANIK " + std::to_string(id_mechanika);
     podlacz_zasoby();
+    zegar->pidy_mechanikow[id_mechanika] = getpid();
     signal(4, ewakuacja);
     signal(1, sygnal1_zamkniecie);
     signal(SIGUSR1, sygnal2_przyspieszenie);

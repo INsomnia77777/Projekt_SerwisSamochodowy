@@ -25,6 +25,15 @@ void podlacz_zasoby() {
     zegar = (StanZegara*)shmat(shmid_zegar, NULL, 0);
 }
 
+//SYGNA£Y
+
+// Sygna³ 4 - po¿ar
+void ewakuacja(int sig) {
+    log(identyfikator, "ALARM! Zamykam kase i uciekam z budynku!");
+    if (zegar != nullptr) shmdt(zegar);
+    exit(0);
+}
+
 int main(int argc, char* argv[]) {
     int id_kasjera;
 

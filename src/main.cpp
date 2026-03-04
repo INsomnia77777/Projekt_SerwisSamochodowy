@@ -128,6 +128,7 @@ void inicjalizacja() {
 
 // --- ZATRUDNIANIE EKIPY ---
 void personel() {
+    uruchom_program("./kierownik", "kierownik");
     uruchom_program("./kasjer", "kasjer", "1");
     for (int i = 1; i <= 3; i++) uruchom_program("./pracownik", "pracownik", std::to_string(i));
     for (int i = 1; i <= 7; i++) uruchom_program("./mechanik", "mechanik", std::to_string(i));
@@ -172,6 +173,7 @@ int main() {
     log("MAIN", "--- SYMULACJA SERWISU SAMOCHODOWEGO ---");
 
     personel();
+    int aktualny_personel = procesy_potomne.size();
 
     log("MAIN", "Poprawnie utworzono zasoby potrzbne do przeprowadzenia symulacji.");
 
@@ -181,7 +183,7 @@ int main() {
     while (1) {
         zegar->minuta++;
 
-        int aktualni = (int)procesy_potomne.size() - LICZBA_PERSONELU; //
+        int aktualni = (int)procesy_potomne.size() - aktualny_personel; //
         zegar->liczba_klientow = (aktualni < 0) ? 0 : aktualni;
 
         if (!zegar->pozar_trwa) {
@@ -277,7 +279,7 @@ int main() {
             sprintf(bufor, "[RAPORT GODZINOWY %02d:00]\n", zegar->godzina);
             ss << bufor;
             ss << " > Wszystkie procesy: " << wszystkie_procesy << "\n";
-            ss << " > Personel (staly):  " << LICZBA_PERSONELU << "\n";
+            ss << " > Personel (aktywny):  " << aktualny_personel << "\n";
             ss << " > AKTYWNI KLIENCI:   " << zegar->liczba_klientow << "\n";
             ss << " > Otwarte stanowiska: " << zegar->otwarte_stanowiska << "\n";
             ss << "----------------------------------------\n";
@@ -346,10 +348,27 @@ int main() {
 
         while ((zakonczony_pid = waitpid(-1, &status, WNOHANG)) > 0) {
 
+            bool to_mechanik = false;
+            for (int i = 1; i <= 8; i++) {
+                if (zegar->pidy_mechanikow[i] == zakonczony_pid) {
+                    to_mechanik = true;
+                    zegar->status_mechanikow[i] = 2;
+                    break;
+                }
+            }
+
             auto it = std::remove(procesy_potomne.begin(), procesy_potomne.end(), zakonczony_pid);
             if (it != procesy_potomne.end()) {
                 procesy_potomne.erase(it, procesy_potomne.end());
-                log("SYSTEM", "Klient (PID: " + std::to_string(zakonczony_pid) + ") zakonczyl symulacje.");
+
+                if (to_mechanik) {
+                    aktualny_personel--;
+                    log("SYSTEM", "Mechanik opuscil warsztat.");
+                }
+                else {
+                    log("SYSTEM", "Klient zakonczyl symulacje.");
+                }
+                
             }
         }
 

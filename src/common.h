@@ -112,6 +112,8 @@ struct StanZegara {
     int liczba_klientow;
     pid_t pid_main;
     bool pozar_trwa;
+    pid_t pidy_mechanikow[9];
+    int status_mechanikow[9];
 };
 
 // 2. Kolejka komunikatow
