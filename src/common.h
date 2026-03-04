@@ -52,7 +52,7 @@ inline key_t pobierz_klucz(char id_projektu) {
 #define MAX_USLUG 30
 #define MAX_USTER_W_AUCIE 5
 #define MAX_KLIENTOW 10000
-#define MAX_KLIENTOW_W_KOLEJCE_MSG 100
+#define MAX_KLIENTOW_W_KOLEJCE_MSG 20
 
 const int K1 = 3;
 const int K2 = 5;

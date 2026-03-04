@@ -13,12 +13,12 @@ int msgid_kasjer = -1;
 int shmid_zegar = -1;
 int shmid_uslugi = -1;
 std::vector<pid_t> procesy_potomne;
-
+std::vector<pid_t> pidy_personelu;
 
 StanZegara* zegar = nullptr;
 Usluga* cennik = nullptr;
 
-void uruchom_program(const char* sciezka, const char* nazwa, std::string arg1 = "") {
+pid_t uruchom_program(const char* sciezka, const char* nazwa, std::string arg1 = "") {
     pid_t pid = fork();
     if (pid == 0) {
         if (arg1.empty()) {
@@ -33,10 +33,12 @@ void uruchom_program(const char* sciezka, const char* nazwa, std::string arg1 = 
     else if (pid > 0) {
         procesy_potomne.push_back(pid);
         log("SYSTEM", "Uruchomiono proces: " + std::string(nazwa) + " (PID: " + std::to_string(pid) + ")");
+        return pid;
     }
     else {
         perror("Blad fork");
     }
+    return -1;
 }
 
 // Ctrl + C
@@ -130,11 +132,11 @@ void inicjalizacja() {
 
 // --- ZATRUDNIANIE EKIPY ---
 void personel() {
-    uruchom_program("./kierownik", "kierownik");
-    uruchom_program("./kasjer", "kasjer", "1");
-    for (int i = 1; i <= 3; i++) uruchom_program("./pracownik", "pracownik", std::to_string(i));
-    for (int i = 1; i <= 7; i++) uruchom_program("./mechanik", "mechanik", std::to_string(i));
-    uruchom_program("./mechanik", "mechanik", "8");
+    pidy_personelu.push_back(uruchom_program("./kierownik", "kierownik"));
+    pidy_personelu.push_back(uruchom_program("./kasjer", "kasjer", "1"));
+    for (int i = 1; i <= 3; i++) pidy_personelu.push_back(uruchom_program("./pracownik", "pracownik", std::to_string(i)));
+    for (int i = 1; i <= 7; i++) pidy_personelu.push_back(uruchom_program("./mechanik", "mechanik", std::to_string(i)));
+    pidy_personelu.push_back(uruchom_program("./mechanik", "mechanik", "8"));
     log("MAIN", "Personel jest na stanowiskach.");
 }
 
@@ -175,7 +177,6 @@ int main() {
     log("MAIN", "--- SYMULACJA SERWISU SAMOCHODOWEGO ---");
 
     personel();
-    int aktualny_personel = procesy_potomne.size();
 
     log("MAIN", "Poprawnie utworzono zasoby potrzbne do przeprowadzenia symulacji.");
 
@@ -185,11 +186,13 @@ int main() {
     while (1) {
         zegar->minuta++;
 
+        int aktualny_personel = pidy_personelu.size();
         int aktualni = (int)procesy_potomne.size() - aktualny_personel; //
         zegar->liczba_klientow = (aktualni < 0) ? 0 : aktualni;
 
         if (!zegar->pozar_trwa) {
             if (zegar->czy_otwarte) {
+
                 // Otwieranie stanowisk
                 if (zegar->otwarte_stanowiska == 1 && zegar->liczba_klientow > K1) {
                     V(semid, SEM_PRACOWNICY);
@@ -343,27 +346,30 @@ int main() {
 
         while ((zakonczony_pid = waitpid(-1, &status, WNOHANG)) > 0) {
 
-            bool to_mechanik = false;
             for (int i = 1; i <= 8; i++) {
                 if (zegar->pidy_mechanikow[i] == zakonczony_pid) {
-                    to_mechanik = true;
                     zegar->status_mechanikow[i] = 2;
                     break;
                 }
+            }
+
+            bool to_personel = false;
+            auto it_pers = std::remove(pidy_personelu.begin(), pidy_personelu.end(), zakonczony_pid);
+            if (it_pers != pidy_personelu.end()) {
+                pidy_personelu.erase(it_pers, pidy_personelu.end());
+                to_personel = true;
             }
 
             auto it = std::remove(procesy_potomne.begin(), procesy_potomne.end(), zakonczony_pid);
             if (it != procesy_potomne.end()) {
                 procesy_potomne.erase(it, procesy_potomne.end());
 
-                if (to_mechanik) {
-                    aktualny_personel--;
-                    log("SYSTEM", "Mechanik opuscil warsztat.");
+                if (to_personel) {
+                    log("SYSTEM", "Pracownik serwisu zakonczyl zmiane.");
                 }
                 else {
                     log("SYSTEM", "Klient zakonczyl symulacje.");
                 }
-
             }
         }
 
